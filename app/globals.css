@@ -1128,3 +1128,9 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
   height: 40px;
   transform: translate(-50%, -50%);
 }
+
+/* forced-colors (Windows High Contrast) strips box-shadow entirely, so the
+   shadow-as-border cards would otherwise lose their edge outright. */
+@media (forced-colors: active) {
+  .panel, .metric, .channel-card, .widget-card { border: 1px solid CanvasText; }
+}
