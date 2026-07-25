@@ -695,7 +695,7 @@ function FinanceDocumentDrawer({ type, paymentStatus, onClose, onPay }: { type: 
       <section className="doc-paper">
         <div className="doc-topline">
           <span><strong>KretivCo Sdn. Bhd.</strong><small>Commission payable to KretivWork</small></span>
-          <b>{isReceipt ? "PAID" : paid ? "PAID" : "DUE"}</b>
+          <b className={isReceipt || paid ? "doc-status-paid" : "doc-status-due"}>{isReceipt ? "PAID" : paid ? "PAID" : "DUE"}</b>
         </div>
         <div className="doc-parties">
           <span><small>Bill to</small><strong>Chef Ammar Group</strong><em>Sales revenue owner</em></span>
