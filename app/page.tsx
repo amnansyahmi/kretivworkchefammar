@@ -12,10 +12,12 @@ import {
   Search,
   Settings,
   ShoppingBag,
+  Store,
   WalletCards,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { SiShopee, SiTiktok } from "react-icons/si";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Order = {
   id: string;
@@ -50,10 +52,15 @@ const chart = [
   { day: "Ahd", date: "19 Jul", bcl: 1552, shopee: 816, tiktok: 578 },
 ];
 
+const COMMISSION_PER_ITEM = 2;
+const AVG_ITEMS_PER_ORDER = orders.reduce((sum, o) => sum + Number(o.item.match(/× (\d+)/)?.[1] ?? 1), 0) / orders.length;
+const itemsSoldFor = (orderCount: number) => Math.round(orderCount * AVG_ITEMS_PER_ORDER);
+const commissionFor = (orderCount: number) => itemsSoldFor(orderCount) * COMMISSION_PER_ITEM;
+
 const periodSummaries = {
-  "Minggu ini": { label: "13–19 Julai 2026", sales: 18746.2, orders: 423, commission: 2811.93, average: 44.32, scale: 1, salesChange: "+16.4%", orderChange: "+11.2%" },
-  "Minggu lepas": { label: "6–12 Julai 2026", sales: 16108.4, orders: 380, commission: 2416.26, average: 42.39, scale: 0.86, salesChange: "+8.1%", orderChange: "+6.8%" },
-  "Bulan ini": { label: "1–19 Julai 2026", sales: 68142.8, orders: 1536, commission: 10221.42, average: 44.36, scale: 3.64, salesChange: "+21.7%", orderChange: "+18.5%" },
+  "Minggu ini": { label: "13–19 Julai 2026", sales: 18746.2, orders: 423, commission: commissionFor(423), average: 44.32, scale: 1, salesChange: "+16.4%", orderChange: "+11.2%" },
+  "Minggu lepas": { label: "6–12 Julai 2026", sales: 16108.4, orders: 380, commission: commissionFor(380), average: 42.39, scale: 0.86, salesChange: "+8.1%", orderChange: "+6.8%" },
+  "Bulan ini": { label: "1–19 Julai 2026", sales: 68142.8, orders: 1536, commission: commissionFor(1536), average: 44.36, scale: 3.64, salesChange: "+21.7%", orderChange: "+18.5%" },
 };
 
 const channels = [
@@ -75,8 +82,9 @@ const commissionWeek = {
   grossSales: 18746.2,
   excluded: 319.7,
   netSales: 18746.2,
-  rate: 15,
-  commission: 2811.93,
+  perItem: COMMISSION_PER_ITEM,
+  itemsSold: itemsSoldFor(periodSummaries["Minggu ini"].orders),
+  commission: periodSummaries["Minggu ini"].commission,
   bank: "Demo Bank",
   account: "KretivCo Sdn. Bhd. - demo beneficiary only",
   reference: "KWCA-2026-W29",
@@ -104,6 +112,67 @@ function currency(value: number) {
 
 function StatusBadge({ status }: { status: Order["status"] }) {
   return <span className={`status status-${status.toLowerCase()}`}><span />{status}</span>;
+}
+
+function ChannelLogo({ name, tint, color }: { name: string; tint: string; color: string }) {
+  const icon =
+    name === "Shopee" ? <SiShopee size={16} /> :
+    name === "TikTok Shop" ? <SiTiktok size={15} /> :
+    <Store size={17} strokeWidth={2} />;
+  return <span className="channel-logo" style={{ background: tint, color }}>{icon}</span>;
+}
+
+function Dropdown({ value, options, onChange, ariaLabel, className }: { value: string; options: (string | { value: string; label: string })[]; onChange: (value: string) => void; ariaLabel?: string; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const items = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
+  const current = items.find((item) => item.value === value) ?? items[0];
+
+  useEffect(() => {
+    if (!open) return;
+    setActiveIndex(Math.max(0, items.findIndex((item) => item.value === value)));
+    const onPointerDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") { setOpen(false); return; }
+    if (!open && (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ")) { e.preventDefault(); setOpen(true); return; }
+    if (!open) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setActiveIndex((i) => Math.min(items.length - 1, i + 1)); }
+    if (e.key === "ArrowUp") { e.preventDefault(); setActiveIndex((i) => Math.max(0, i - 1)); }
+    if (e.key === "Enter") { e.preventDefault(); onChange(items[activeIndex].value); setOpen(false); }
+  };
+
+  return (
+    <div className={`dropdown ${className ?? ""}`} ref={rootRef} onKeyDown={onKeyDown}>
+      <button type="button" className="dropdown-trigger" aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel} onClick={() => setOpen((v) => !v)}>
+        <span>{current?.label}</span>
+        <ChevronDown size={14} className="dropdown-chevron" />
+      </button>
+      {open && (
+        <ul className="dropdown-menu" role="listbox">
+          {items.map((item, i) => (
+            <li
+              key={item.value}
+              role="option"
+              aria-selected={item.value === value}
+              className={`${item.value === value ? "active" : ""} ${i === activeIndex ? "highlighted" : ""}`}
+              onMouseEnter={() => setActiveIndex(i)}
+              onClick={() => { onChange(item.value); setOpen(false); }}
+            >
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function buildConicGradient(segments: { color: string; value: number }[]) {
@@ -242,7 +311,7 @@ export default function Home() {
   const dayOrdersEst = dayTotals.map((v) => Math.max(1, Math.round(v / 44)));
   const salesSeries = dayTotals.map((v) => v * summary.scale);
   const ordersSeries = dayOrdersEst.map((v) => Math.round(v * summary.scale));
-  const commissionSeries = salesSeries.map((v) => v * (commissionWeek.rate / 100));
+  const commissionSeries = ordersSeries.map((v) => v * AVG_ITEMS_PER_ORDER * COMMISSION_PER_ITEM);
   const averageSeries = dayTotals.map((v, i) => v / dayOrdersEst[i]);
   const goalTarget = period === "Bulan ini" ? 80000 : 20000;
   const goalPct = Math.round((summary.sales / goalTarget) * 100);
@@ -301,7 +370,7 @@ export default function Home() {
               <p>{summary.label} · BCL.my, Shopee dan TikTok Shop</p>
             </div>
             <div className="heading-actions">
-              <button className="period-button"><select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Tempoh laporan"><option>Minggu ini</option><option>Minggu lepas</option><option>Bulan ini</option></select></button>
+              <Dropdown className="period-dropdown" value={period} onChange={setPeriod} options={["Minggu ini", "Minggu lepas", "Bulan ini"]} ariaLabel="Tempoh laporan" />
               <button className="secondary-button" onClick={() => setImportOpen(true)}>Import</button>
               <button className="primary-button" onClick={() => setStatementOpen(true)}>Penyata</button>
             </div>
@@ -324,7 +393,7 @@ export default function Home() {
                 </button>
                 <button className="metric metric-button" onClick={() => { setActive("finance"); setFinanceTab("studio"); }}>
                   <div className="metric-top"><span className="metric-kicker">Commission</span><span className="positive">+16.4%</span></div>
-                  <p>Komisen KretivWork</p><h2>{currency(summary.commission)}</h2><small>Kadar komisen semasa: 15%</small>
+                  <p>Komisen KretivWork</p><h2>{currency(summary.commission)}</h2><small>Kadar komisen semasa: RM{COMMISSION_PER_ITEM}/item</small>
                   <Sparkline id="commission" data={commissionSeries} stroke="#d97706" />
                   <span className="metric-link">Buka invoice</span>
                 </button>
@@ -355,7 +424,7 @@ export default function Home() {
                   <div className="panel-heading"><div><h3>Penyata semasa</h3><p>{summary.label}</p></div><span className={approved ? "approved-pill" : "review-pill"}>{approved ? "Diluluskan" : "Perlu semakan"}</span></div>
                   <div className="settlement-amount"><span>Komisen perlu dibayar</span><strong>{currency(summary.commission)}</strong></div>
                   <div className="settlement-row"><span>Jualan selesai</span><strong>{currency(summary.sales)}</strong></div>
-                  <div className="settlement-row"><span>Kadar komisen</span><strong>15%</strong></div>
+                  <div className="settlement-row"><span>Kadar komisen</span><strong>RM{COMMISSION_PER_ITEM}/item</strong></div>
                   <div className="settlement-row"><span>Refund & pembatalan</span><strong>− RM319.70</strong></div>
                   <div className="approval-flow"><span className="done">1</span><i /><span className={approved ? "done" : "current"}>2</span><i /><span>3</span></div>
                   <div className="flow-labels"><span>Dijana</span><span>{approved ? "Diluluskan" : "Semakan Chef"}</span><span>Bayaran</span></div>
@@ -415,7 +484,7 @@ export default function Home() {
                 <div className="section-heading"><div><h3>Prestasi saluran</h3><p>Bahagian jualan minggu ini</p></div><button onClick={() => { setActive("sales"); setSalesTab("channels"); }}>Lihat semua</button></div>
                 <div className="channel-grid">
                   {channels.map((channel) => <button className="channel-card channel-card-button" key={channel.name} onClick={() => openOrdersFor(channel.name)}>
-                    <div className="channel-head"><span className="channel-logo" style={{ background: channel.tint, color: channel.color }}>{channel.name === "TikTok Shop" ? "TT" : channel.name[0]}</span><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div>
+                    <div className="channel-head"><ChannelLogo name={channel.name} tint={channel.tint} color={channel.color} /><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div>
                     <h4>{channel.sales}</h4><p>{channel.orders} pesanan · {channel.share}% daripada jualan</p>
                     <div className="progress"><i style={{ width: `${channel.share}%`, background: channel.color }} /></div>
                   </button>)}
@@ -483,9 +552,9 @@ function OrdersPanel({ orders, query, setQuery, status, setStatus, expanded, not
   return <section className={`panel orders-panel ${expanded ? "orders-expanded" : ""}`}>
     <div className="panel-heading orders-heading"><div><h3>{expanded ? "Pesanan" : "Pesanan terkini"}</h3><p>{expanded ? `${sortedOrders.length} rekod ditemui` : "Aktiviti jualan terbaru"}</p></div><div className="table-actions">
       <label className="search-box"><Search size={16} /><input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="Cari..." /></label>
-      <label className="filter-select"><select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}><option>Semua status</option><option>Selesai</option><option>Diproses</option><option>Refund</option></select></label>
-      <label className="filter-select compact-select"><select value={channel} onChange={(e) => { setChannel(e.target.value); setPage(1); }}><option>Semua saluran</option><option>BCL.my</option><option>Shopee</option><option>TikTok Shop</option></select></label>
-      <label className="filter-select compact-select"><select value={sort} onChange={(e) => setSort(e.target.value)}><option value="latest">Terkini</option><option value="highest">Nilai tertinggi</option><option value="lowest">Nilai terendah</option></select></label>
+      <Dropdown className="filter-select" value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={["Semua status", "Selesai", "Diproses", "Refund"]} ariaLabel="Tapis status" />
+      <Dropdown className="filter-select compact-select" value={channel} onChange={(v) => { setChannel(v); setPage(1); }} options={["Semua saluran", "BCL.my", "Shopee", "TikTok Shop"]} ariaLabel="Tapis saluran" />
+      <Dropdown className="filter-select compact-select" value={sort} onChange={setSort} options={[{ value: "latest", label: "Terkini" }, { value: "highest", label: "Nilai tertinggi" }, { value: "lowest", label: "Nilai terendah" }]} ariaLabel="Susun ikut" />
       <button className="export-button" onClick={() => notify("Fail CSV sedang disediakan")}>Export</button>
     </div></div>
     <div className="table-wrap"><table><thead><tr><th>PESANAN</th><th>PELANGGAN</th><th>SALURAN</th><th>PRODUK</th><th>JUMLAH</th><th>STATUS</th><th /></tr></thead><tbody>{visibleOrders.map((order) => <tr key={order.id} tabIndex={0} onClick={() => onSelectOrder(order)} onKeyDown={(e) => { if (e.key === "Enter") onSelectOrder(order); }}><td><strong>{order.id}</strong><small>{order.time}</small></td><td><div className="customer"><span>{order.initials}</span><strong>{order.customer}</strong></div></td><td><span className={`channel-tag ${order.channel.split(".")[0].toLowerCase().replace(" shop", "")}`}>{order.channel}</span></td><td><div className="product-cell"><span className="product-thumb" style={{ background: order.productTone }}>{order.productCode}</span><span><strong>{order.item}</strong><small>Chef Ammar™ Arabic Spices</small></span></div></td><td><strong>{currency(order.amount)}</strong></td><td><StatusBadge status={order.status} /></td><td><button className="row-menu" aria-label={`Buka ${order.id}`} onClick={(e) => { e.stopPropagation(); onSelectOrder(order); }}><ChevronRight size={17} /></button></td></tr>)}</tbody></table>{sortedOrders.length === 0 && <div className="empty-state"><Search size={28} /><strong>Tiada pesanan</strong><span>Ubah carian atau filter.</span><button onClick={() => { setQuery(""); setStatus("Semua status"); setChannel("Semua saluran"); }}>Kosongkan filter</button></div>}</div>
@@ -494,7 +563,7 @@ function OrdersPanel({ orders, query, setQuery, status, setStatus, expanded, not
 }
 
 function ChannelsView() {
-  return <section className="view-stack"><div className="channel-grid channel-grid-large">{channels.map((channel) => <article className="channel-card channel-detail" key={channel.name}><div className="channel-head"><span className="channel-logo" style={{ background: channel.tint, color: channel.color }}>{channel.name === "TikTok Shop" ? "TT" : channel.name[0]}</span><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div><h4>{channel.sales}</h4><div className="detail-grid"><span>Pesanan<strong>{channel.orders}</strong></span><span>Bahagian jualan<strong>{channel.share}%</strong></span><span>Purata pesanan<strong>{currency(Number(channel.sales.replace(/[^0-9]/g, "")) / channel.orders)}</strong></span></div><div className="connection-ok"><i />Sambungan aktif · 4 minit lalu</div></article>)}</div><article className="panel insight-panel"><div><span className="insight-index">01</span><h3>TikTok Shop berkembang paling pantas</h3><p>Jualan meningkat 24.8% minggu ini. Pertimbangkan kandungan video masakan pada Jumaat dan Sabtu.</p></div><button>Rancang kempen</button></article></section>;
+  return <section className="view-stack"><div className="channel-grid channel-grid-large">{channels.map((channel) => <article className="channel-card channel-detail" key={channel.name}><div className="channel-head"><ChannelLogo name={channel.name} tint={channel.tint} color={channel.color} /><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div><h4>{channel.sales}</h4><div className="detail-grid"><span>Pesanan<strong>{channel.orders}</strong></span><span>Bahagian jualan<strong>{channel.share}%</strong></span><span>Purata pesanan<strong>{currency(Number(channel.sales.replace(/[^0-9]/g, "")) / channel.orders)}</strong></span></div><div className="connection-ok"><i />Sambungan aktif · 4 minit lalu</div></article>)}</div><article className="panel insight-panel"><div><span className="insight-index">01</span><h3>TikTok Shop berkembang paling pantas</h3><p>Jualan meningkat 24.8% minggu ini. Pertimbangkan kandungan video masakan pada Jumaat dan Sabtu.</p></div><button>Rancang kempen</button></article></section>;
 }
 
 function AttributionView({ onOpenOrders }: { onOpenOrders: (channel: string) => void }) {
@@ -563,7 +632,7 @@ function AttributionView({ onOpenOrders }: { onOpenOrders: (channel: string) => 
           <div className="flow-destinations">
             {Object.entries(selectedChannels).map(([name, value]) => {
               const channel = channels.find((item) => item.name === name)!;
-              return <button key={name} onClick={() => onOpenOrders(name)}><span className="channel-logo" style={{ background: channel.tint, color: channel.color }}>{name === "TikTok Shop" ? "TT" : name[0]}</span><span><small>CHECKOUT DI</small><strong>{name}</strong><em><i style={{ width: `${value / maxChannel * 100}%`, background: channel.color }} /></em></span><b>{currency(value)}<small>{Math.round(value / selectedSales * 100)}%</small></b></button>;
+              return <button key={name} onClick={() => onOpenOrders(name)}><ChannelLogo name={name} tint={channel.tint} color={channel.color} /><span><small>CHECKOUT DI</small><strong>{name}</strong><em><i style={{ width: `${value / maxChannel * 100}%`, background: channel.color }} /></em></span><b>{currency(value)}<small>{Math.round(value / selectedSales * 100)}%</small></b></button>;
             })}
           </div>
         </div>
@@ -598,7 +667,7 @@ function CommissionStudio({ paymentStatus, onApprove, onPay, onOpenDocument }: {
       <div className="commission-copy">
         <p className="eyebrow">WEEKLY COMMISSION</p>
         <h2>{commissionWeek.invoiceNo}</h2>
-        <p>{commissionWeek.period} · 423 order selesai · kadar komisen {commissionWeek.rate}%</p>
+        <p>{commissionWeek.period} · {periodSummaries["Minggu ini"].orders} order selesai · RM{commissionWeek.perItem}/item · {commissionWeek.itemsSold} item</p>
       </div>
       <div className="commission-total">
         <span>Jumlah perlu dibayar</span>
@@ -626,7 +695,7 @@ function CommissionStudio({ paymentStatus, onApprove, onPay, onOpenDocument }: {
         <div className="panel-heading"><div><h3>Invoice komisen</h3><p>Dummy invoice untuk pembayaran KretivCo</p></div><span className={approved ? "approved-pill" : "review-pill"}>{approved ? "Approved" : "Draft"}</span></div>
         <div className="invoice-lines">
           <span><small>Jualan bersih</small><strong>{currency(commissionWeek.netSales)}</strong></span>
-          <span><small>Komisen</small><strong>{commissionWeek.rate}%</strong></span>
+          <span><small>Komisen</small><strong>RM{commissionWeek.perItem} × {commissionWeek.itemsSold} item</strong></span>
           <span><small>Refund dikecualikan</small><strong>-{currency(commissionWeek.excluded)}</strong></span>
           <span><small>Payable</small><strong>{currency(commissionWeek.commission)}</strong></span>
         </div>
@@ -646,7 +715,7 @@ function CommissionStudio({ paymentStatus, onApprove, onPay, onOpenDocument }: {
 }
 
 function StatementsView({ approved, paid, onOpen }: { approved: boolean; paid: boolean; onOpen: () => void }) {
-  const weeks = [{ period: "13–19 Jul 2026", sales: "RM18,746.20", commission: "RM2,811.93", status: paid ? "Dibayar" : approved ? "Diluluskan" : "Perlu semakan" }, { period: "6–12 Jul 2026", sales: "RM16,108.40", commission: "RM2,416.26", status: "Dibayar" }, { period: "29 Jun–5 Jul 2026", sales: "RM14,932.00", commission: "RM2,239.80", status: "Dibayar" }];
+  const weeks = [{ period: "13–19 Jul 2026", sales: currency(18746.2), commission: currency(periodSummaries["Minggu ini"].commission), status: paid ? "Dibayar" : approved ? "Diluluskan" : "Perlu semakan" }, { period: "6–12 Jul 2026", sales: currency(16108.4), commission: currency(periodSummaries["Minggu lepas"].commission), status: "Dibayar" }, { period: "29 Jun–5 Jul 2026", sales: currency(14932), commission: currency(commissionFor(337)), status: "Dibayar" }];
   return <section className="panel statement-list"><div className="panel-heading"><div><h3>Rekod penyata</h3><p>Komisen mingguan KretivWork</p></div></div>{weeks.map((week, i) => <button className="statement-item" key={week.period} onClick={i === 0 ? onOpen : undefined}><span className="statement-index">W{29 - i}</span><span><strong>{week.period}</strong><small>{week.sales} jualan selesai</small></span><span><small>Komisen</small><strong>{week.commission}</strong></span><span className={week.status === "Dibayar" || week.status === "Diluluskan" ? "approved-pill" : "review-pill"}>{week.status}</span><span className="row-action">Buka</span></button>)}</section>;
 }
 
@@ -660,7 +729,7 @@ function TeamView({ notify }: { notify: (v: string) => void }) {
 }
 
 function SettingsView({ notify }: { notify: (v: string) => void }) {
-  return <section className="settings-grid"><article className="panel settings-panel"><h3>Tetapan komisen</h3><p>Kadar ini digunakan untuk penyata baharu.</p><label>Kadar komisen KretivWork<div><input defaultValue="15" /><span>%</span></div></label><button className="primary-button" onClick={() => notify("Tetapan komisen disimpan")}>Simpan perubahan</button></article><article className="panel settings-panel"><h3>Sambungan platform</h3><p>Status sumber data pesanan.</p>{channels.map((channel) => { const issue = channel.name === "TikTok Shop"; return <button className={`integration-row ${issue ? "has-warning" : ""}`} key={channel.name} onClick={() => issue && notify("TikTok Shop: sambungkan semula token API.")}><span className="channel-logo" style={{ background: channel.tint, color: channel.color }}>{channel.name === "TikTok Shop" ? "TT" : channel.name[0]}</span><span><strong>{channel.name}</strong><small>{issue ? "Perlu sambung semula" : "Disambungkan"}</small></span><span className="integration-state"><i />{issue ? "Semak" : "Aktif"}</span></button>; })}</article></section>;
+  return <section className="settings-grid"><article className="panel settings-panel"><h3>Tetapan komisen</h3><p>Kadar ini digunakan untuk penyata baharu.</p><label>Kadar komisen KretivWork<div style={{ width: 170 }}><span style={{ paddingLeft: 12 }}>RM</span><input defaultValue={COMMISSION_PER_ITEM} style={{ width: 40, padding: "0 4px" }} /><span style={{ paddingRight: 12 }}>/ item</span></div></label><button className="primary-button" onClick={() => notify("Tetapan komisen disimpan")}>Simpan perubahan</button></article><article className="panel settings-panel"><h3>Sambungan platform</h3><p>Status sumber data pesanan.</p>{channels.map((channel) => { const issue = channel.name === "TikTok Shop"; return <button className={`integration-row ${issue ? "has-warning" : ""}`} key={channel.name} onClick={() => issue && notify("TikTok Shop: sambungkan semula token API.")}><ChannelLogo name={channel.name} tint={channel.tint} color={channel.color} /><span><strong>{channel.name}</strong><small>{issue ? "Perlu sambung semula" : "Disambungkan"}</small></span><span className="integration-state"><i />{issue ? "Semak" : "Aktif"}</span></button>; })}</article></section>;
 }
 
 function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
@@ -683,7 +752,7 @@ function OrderDrawer({ order, onClose, notify }: { order: Order; onClose: () => 
 }
 
 function StatementModal({ role, approved, onClose, onApprove }: { role: string; approved: boolean; onClose: () => void; onApprove: () => void }) {
-  return <div className="modal-layer drawer-layer" role="dialog" aria-modal="true"><div className="modal statement-modal drawer"><button className="modal-close" onClick={onClose}><X size={20} /></button><p className="eyebrow">PENYATA #KW-2026-029</p><h2>13–19 Julai 2026</h2><div className="modal-summary"><span>423<small>Pesanan selesai</small></span><span>RM18,746.20<small>Jualan bersih</small></span><span>15%<small>Kadar komisen</small></span></div><div className="modal-total"><span>Jumlah komisen KretivWork</span><strong>RM2,811.93</strong></div><p className="modal-note">Pesanan pending, refund dan pembatalan telah dikecualikan daripada pengiraan.</p><div className="modal-actions"><button className="secondary-button" onClick={() => window.print()}>Muat turun</button>{role === "Chef Ammar" && !approved ? <button className="primary-button" onClick={onApprove}>Luluskan penyata</button> : <button className="primary-button" onClick={onClose}>{approved ? "Selesai" : "Tutup"}</button>}</div>{role !== "Chef Ammar" && !approved && <small className="approval-hint">Tukar kepada pandangan Chef Ammar untuk menguji fungsi kelulusan.</small>}</div></div>;
+  return <div className="modal-layer drawer-layer" role="dialog" aria-modal="true"><div className="modal statement-modal drawer"><button className="modal-close" onClick={onClose}><X size={20} /></button><p className="eyebrow">PENYATA #KW-2026-029</p><h2>13–19 Julai 2026</h2><div className="modal-summary"><span>{periodSummaries["Minggu ini"].orders}<small>Pesanan selesai</small></span><span>{currency(commissionWeek.grossSales)}<small>Jualan bersih</small></span><span>RM{commissionWeek.perItem}/item<small>Kadar komisen</small></span></div><div className="modal-total"><span>Jumlah komisen KretivWork</span><strong>{currency(commissionWeek.commission)}</strong></div><p className="modal-note">Pesanan pending, refund dan pembatalan telah dikecualikan daripada pengiraan.</p><div className="modal-actions"><button className="secondary-button" onClick={() => window.print()}>Muat turun</button>{role === "Chef Ammar" && !approved ? <button className="primary-button" onClick={onApprove}>Luluskan penyata</button> : <button className="primary-button" onClick={onClose}>{approved ? "Selesai" : "Tutup"}</button>}</div>{role !== "Chef Ammar" && !approved && <small className="approval-hint">Tukar kepada pandangan Chef Ammar untuk menguji fungsi kelulusan.</small>}</div></div>;
 }
 
 function FinanceDocumentDrawer({ type, paymentStatus, onClose, onPay }: { type: "invoice" | "receipt"; paymentStatus: PaymentStatus; onClose: () => void; onPay: () => void }) {
@@ -710,7 +779,7 @@ function FinanceDocumentDrawer({ type, paymentStatus, onClose, onPay }: { type: 
         <div className="doc-lines">
           <div><strong>Description</strong><strong>Amount</strong></div>
           <div><span>Weekly commission on completed sales</span><span>{currency(commissionWeek.netSales)}</span></div>
-          <div><span>Commission rate</span><span>{commissionWeek.rate}%</span></div>
+          <div><span>Commission rate</span><span>RM{commissionWeek.perItem} × {commissionWeek.itemsSold} item</span></div>
           <div><span>Refund / cancellation excluded</span><span>-{currency(commissionWeek.excluded)}</span></div>
         </div>
         <div className="doc-total"><span>{isReceipt ? "Total paid" : "Amount due"}</span><strong>{currency(commissionWeek.commission)}</strong></div>
