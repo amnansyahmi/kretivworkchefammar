@@ -17,12 +17,15 @@
   --surface-hover: #f8fafc;
   --surface-alt: #f1f5f9;
 
-  --primary: #1e40af;
-  --primary-hover: #1e3a8a;
-  --primary-soft: #e9eef6;
-  --primary-soft-border: #c7d6f2;
-  --primary-deep: #17275e;
-  --primary-deep-2: #0c1638;
+  --primary: #1c1917;
+  --primary-hover: #292524;
+  --primary-soft: #f7f0dc;
+  --primary-soft-border: #e8d5a3;
+  --primary-deep: #14100d;
+  --primary-deep-2: #0a0807;
+
+  --gold: #a16207;
+  --gold-soft: #f7edd8;
 
   --success: #059669;
   --success-hover: #047857;
@@ -116,11 +119,11 @@ input, select { color: var(--ink); }
 }
 .primary-button {
   border: 1px solid var(--primary);
-  background: var(--primary);
+  background: linear-gradient(180deg, #34302c, var(--primary));
   color: white;
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-xs), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
-.primary-button:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.primary-button:hover { background: linear-gradient(180deg, #3a352f, var(--primary-hover)); border-color: var(--primary-hover); }
 .primary-button:disabled, .full-button:disabled, .secondary-button:disabled { opacity: 0.45; cursor: not-allowed; }
 .secondary-button, .export-button {
   border: 1px solid var(--line);
@@ -131,11 +134,12 @@ input, select { color: var(--ink); }
 .full-button {
   width: 100%;
   border: 1px solid var(--primary);
-  background: var(--primary);
+  background: linear-gradient(180deg, #34302c, var(--primary));
   color: white;
   font-size: 11px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
-.full-button:hover { background: var(--primary-hover); }
+.full-button:hover { background: linear-gradient(180deg, #3a352f, var(--primary-hover)); }
 
 /* ==========================================================================
    App shell / sidebar
@@ -150,7 +154,10 @@ input, select { color: var(--ink); }
   display: flex;
   flex-direction: column;
   z-index: 30;
-  background: linear-gradient(185deg, var(--primary-deep-2), var(--primary-deep));
+  background:
+    radial-gradient(120% 60% at 15% 0%, rgba(161, 98, 7, 0.16), transparent 60%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0px, rgba(255, 255, 255, 0.025) 1px, transparent 1px, transparent 5px),
+    linear-gradient(185deg, var(--primary-deep-2), var(--primary-deep));
   border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -158,7 +165,7 @@ input, select { color: var(--ink); }
 .brand-lockup { display: flex; align-items: center; gap: 4px; }
 .brand-lockup i { font-style: normal; color: rgba(255, 255, 255, 0.4); font-size: 11px; }
 .brand-lockup .brand-mark, .brand-lockup .chef-mark { display: grid; place-items: center; border-radius: var(--radius-xs); font-size: 11px; font-weight: 800; }
-.brand-lockup .brand-mark { width: 34px; height: 34px; background: #eef2fb; color: var(--primary-deep); }
+.brand-lockup .brand-mark { width: 34px; height: 34px; background: #f2e9d3; color: var(--primary-deep); }
 .brand-lockup .chef-mark { width: 25px; height: 34px; border: 1px solid rgba(255, 255, 255, 0.25); color: #d9e5e0; font-size: 9px; }
 .brand > div:last-child strong { display: block; font-size: 14px; color: white; }
 .brand > div:last-child span { display: block; font-size: 8px; color: rgba(255, 255, 255, 0.55); margin-top: 2px; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
@@ -215,7 +222,7 @@ input, select { color: var(--ink); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .profile-mini { display: grid; grid-template-columns: 34px 1fr; gap: 9px; align-items: center; padding: 2px 6px 0; }
-.avatar { width: 34px; height: 34px; border-radius: var(--radius-xs); display: grid; place-items: center; background: #dbe6fb; color: var(--primary-deep); font-size: 11px; font-weight: 800; }
+.avatar { width: 34px; height: 34px; border-radius: var(--radius-xs); display: grid; place-items: center; background: #efe0b8; color: var(--primary-deep); font-size: 11px; font-weight: 800; }
 .profile-mini strong { display: block; font-size: 11px; color: white; }
 .profile-mini span { display: block; font-size: 10px; color: rgba(255, 255, 255, 0.6); margin-top: 2px; }
 
@@ -311,7 +318,7 @@ input, select { color: var(--ink); }
   flex-direction: column;
   transition: box-shadow 150ms var(--ease-out), transform 150ms var(--ease-out);
 }
-.metric-featured { background: var(--primary-soft); border-color: var(--primary-soft-border); }
+.metric-featured { background: linear-gradient(155deg, #faf3e2, var(--primary-soft)); border-color: var(--primary-soft-border); }
 .metric-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .metric-kicker { font-size: 9px; font-weight: 750; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
 .positive, .negative { display: flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 750; }
@@ -447,7 +454,7 @@ input, select { color: var(--ink); }
 .gauge-wrap { position: relative; display: grid; place-items: center; margin: 10px auto 4px; width: 132px; height: 132px; }
 .gauge-svg { width: 132px; height: 132px; transform: rotate(-90deg); }
 .gauge-track { fill: none; stroke: var(--surface-alt); stroke-width: 10; }
-.gauge-value { fill: none; stroke: var(--primary); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+.gauge-value { fill: none; stroke: var(--gold); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
 .gauge-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .gauge-center strong { font-family: var(--font-mono); font-size: 22px; letter-spacing: -0.03em; color: var(--ink); }
 .gauge-center span { font-size: 9px; color: var(--muted); margin-top: 2px; }
@@ -728,18 +735,19 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
   grid-template-columns: 1fr minmax(230px, 310px) auto;
   gap: 22px;
   align-items: end;
-  background: var(--primary-soft);
+  background: radial-gradient(120% 140% at 8% 0%, #fbf4e4, var(--primary-soft));
   position: relative;
   overflow: hidden;
 }
 .commission-copy h2 { font-size: 32px; letter-spacing: -0.04em; margin: 0 0 9px; color: var(--ink); font-weight: 700; }
 .commission-copy p:last-child { font-size: 13px; color: var(--ink-soft); margin: 0; }
 .commission-total {
-  background: var(--primary-deep);
+  background: linear-gradient(155deg, #2a241d, var(--primary-deep));
+  border: 1px solid rgba(161, 98, 7, 0.35);
   color: white;
   border-radius: var(--radius-md);
   padding: 20px;
-  box-shadow: var(--shadow-pop);
+  box-shadow: var(--shadow-pop), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .commission-total span { display: block; color: rgba(255, 255, 255, 0.65); font-size: 10px; }
 .commission-total small { display: block; color: rgba(255, 255, 255, 0.65); font-size: 10px; }
@@ -919,7 +927,7 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
 .doc-lines > div { display: grid; grid-template-columns: 1fr 130px; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--line); font-size: 11px; color: var(--ink-soft); background: var(--surface); }
 .doc-lines > div:first-child { border-top: 0; background: var(--surface-alt); color: var(--muted); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
 .doc-lines > div span:last-child, .doc-lines > div strong:last-child { text-align: right; }
-.doc-total { display: flex; justify-content: space-between; align-items: center; background: var(--primary-deep); color: white; border-radius: var(--radius-xs); padding: 17px; margin-top: 14px; }
+.doc-total { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(155deg, #2a241d, var(--primary-deep)); border: 1px solid rgba(161, 98, 7, 0.35); color: white; border-radius: var(--radius-xs); padding: 17px; margin-top: 14px; }
 .doc-total span { font-size: 10px; color: rgba(255, 255, 255, 0.7); }
 .doc-total strong { font-family: var(--font-mono); font-size: 23px; letter-spacing: -0.03em; }
 .doc-note { font-size: 10px; line-height: 1.6; color: var(--muted); margin: 14px 0 0; }
