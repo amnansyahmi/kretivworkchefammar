@@ -86,7 +86,7 @@ const attributionSources = [
   { id: "threads", name: "Threads", short: "TH", type: "Organic content", sales: 5436, orders: 122, clicks: 2814, color: "#7c3aed", tint: "#7c3aed1f", channels: { "BCL.my": 3000, Shopee: 1800, "TikTok Shop": 636 } },
   { id: "tiktok-content", name: "TikTok Content", short: "TK", type: "Video content", sales: 4874, orders: 109, clicks: 3320, color: "#db2777", tint: "#db27771f", channels: { "BCL.my": 1200, Shopee: 1374, "TikTok Shop": 2300 } },
   { id: "affiliate", name: "KOL / Affiliate", short: "AF", type: "Referral link", sales: 3562, orders: 78, clicks: 1440, color: "#d97706", tint: "#d977061f", channels: { "BCL.my": 1600, Shopee: 1300, "TikTok Shop": 662 } },
-  { id: "whatsapp", name: "WhatsApp", short: "WA", type: "Direct message", sales: 2249, orders: 51, clicks: 692, color: "#2563eb", tint: "#2563eb1f", channels: { "BCL.my": 1500, Shopee: 550, "TikTok Shop": 199 } },
+  { id: "whatsapp", name: "WhatsApp", short: "WA", type: "Direct message", sales: 2249, orders: 51, clicks: 692, color: "#3b82f6", tint: "#3b82f61f", channels: { "BCL.my": 1500, Shopee: 550, "TikTok Shop": 199 } },
   { id: "organic", name: "Organic / Direct", short: "OD", type: "Search & direct", sales: 1687, orders: 39, clicks: 512, color: "#0891b2", tint: "#0891b21f", channels: { "BCL.my": 800, Shopee: 700, "TikTok Shop": 187 } },
   { id: "unknown", name: "Tidak dikenal pasti", short: "?", type: "No tracking data", sales: 938, orders: 24, clicks: 0, color: "#64748b", tint: "#64748b1f", channels: { "BCL.my": 312, Shopee: 512, "TikTok Shop": 114 } },
 ];
@@ -153,7 +153,7 @@ function GoalGauge({ pct }: { pct: number }) {
 }
 
 const paymentBreakdown = (() => {
-  const palette = ["#059669", "#ea580c", "#2563eb", "#d97706", "#7c3aed"];
+  const palette = ["#059669", "#ea580c", "#3b82f6", "#d97706", "#7c3aed"];
   const map = new Map<string, { count: number; total: number }>();
   for (const order of orders) {
     const entry = map.get(order.payment) ?? { count: 0, total: 0 };
@@ -319,7 +319,7 @@ export default function Home() {
                 <button className="metric metric-button" onClick={() => { setActive("sales"); setSalesTab("orders"); setStatus("Selesai"); }}>
                   <div className="metric-top"><span className="metric-kicker">Orders</span><span className="positive">{summary.orderChange}</span></div>
                   <p>Pesanan selesai</p><h2>{summary.orders.toLocaleString("en-MY")}</h2><small>{Math.round(summary.orders * 1.057).toLocaleString("en-MY")} jumlah pesanan</small>
-                  <Sparkline id="orders" data={ordersSeries} stroke="#2563eb" />
+                  <Sparkline id="orders" data={ordersSeries} stroke="#3b82f6" />
                   <span className="metric-link">Tapis pesanan</span>
                 </button>
                 <button className="metric metric-button" onClick={() => { setActive("finance"); setFinanceTab("studio"); }}>
