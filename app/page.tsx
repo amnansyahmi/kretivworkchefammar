@@ -57,9 +57,9 @@ const periodSummaries = {
 };
 
 const channels = [
-  { name: "BCL.my", sub: "Direct sales", sales: "RM8,412", orders: 184, share: 45, color: "#f0b23e", tint: "#f0b23e26", change: "+18.2%" },
-  { name: "Shopee", sub: "Marketplace", sales: "RM6,236", orders: 147, share: 33, color: "#ff7a45", tint: "#ff7a4526", change: "+9.4%" },
-  { name: "TikTok Shop", sub: "Social commerce", sales: "RM4,098", orders: 92, share: 22, color: "#5ee6c0", tint: "#5ee6c026", change: "+24.8%" },
+  { name: "BCL.my", sub: "Direct sales", sales: "RM8,412", orders: 184, share: 45, color: "#d97706", tint: "#d977061f", change: "+18.2%" },
+  { name: "Shopee", sub: "Marketplace", sales: "RM6,236", orders: 147, share: 33, color: "#ea580c", tint: "#ea580c1f", change: "+9.4%" },
+  { name: "TikTok Shop", sub: "Social commerce", sales: "RM4,098", orders: 92, share: 22, color: "#0d9488", tint: "#0d94881f", change: "+24.8%" },
 ];
 
 type PaymentStatus = "draft" | "approved" | "paid";
@@ -83,12 +83,12 @@ const commissionWeek = {
 };
 
 const attributionSources = [
-  { id: "threads", name: "Threads", short: "TH", type: "Organic content", sales: 5436, orders: 122, clicks: 2814, color: "#9fb8ac", tint: "#9fb8ac26", channels: { "BCL.my": 3000, Shopee: 1800, "TikTok Shop": 636 } },
-  { id: "tiktok-content", name: "TikTok Content", short: "TK", type: "Video content", sales: 4874, orders: 109, clicks: 3320, color: "#34d399", tint: "#34d39926", channels: { "BCL.my": 1200, Shopee: 1374, "TikTok Shop": 2300 } },
-  { id: "affiliate", name: "KOL / Affiliate", short: "AF", type: "Referral link", sales: 3562, orders: 78, clicks: 1440, color: "#f0b23e", tint: "#f0b23e26", channels: { "BCL.my": 1600, Shopee: 1300, "TikTok Shop": 662 } },
-  { id: "whatsapp", name: "WhatsApp", short: "WA", type: "Direct message", sales: 2249, orders: 51, clicks: 692, color: "#4fd6a8", tint: "#4fd6a826", channels: { "BCL.my": 1500, Shopee: 550, "TikTok Shop": 199 } },
-  { id: "organic", name: "Organic / Direct", short: "OD", type: "Search & direct", sales: 1687, orders: 39, clicks: 512, color: "#5ec8e8", tint: "#5ec8e826", channels: { "BCL.my": 800, Shopee: 700, "TikTok Shop": 187 } },
-  { id: "unknown", name: "Tidak dikenal pasti", short: "?", type: "No tracking data", sales: 938, orders: 24, clicks: 0, color: "#9aa8a2", tint: "#9aa8a226", channels: { "BCL.my": 312, Shopee: 512, "TikTok Shop": 114 } },
+  { id: "threads", name: "Threads", short: "TH", type: "Organic content", sales: 5436, orders: 122, clicks: 2814, color: "#7c3aed", tint: "#7c3aed1f", channels: { "BCL.my": 3000, Shopee: 1800, "TikTok Shop": 636 } },
+  { id: "tiktok-content", name: "TikTok Content", short: "TK", type: "Video content", sales: 4874, orders: 109, clicks: 3320, color: "#db2777", tint: "#db27771f", channels: { "BCL.my": 1200, Shopee: 1374, "TikTok Shop": 2300 } },
+  { id: "affiliate", name: "KOL / Affiliate", short: "AF", type: "Referral link", sales: 3562, orders: 78, clicks: 1440, color: "#d97706", tint: "#d977061f", channels: { "BCL.my": 1600, Shopee: 1300, "TikTok Shop": 662 } },
+  { id: "whatsapp", name: "WhatsApp", short: "WA", type: "Direct message", sales: 2249, orders: 51, clicks: 692, color: "#2563eb", tint: "#2563eb1f", channels: { "BCL.my": 1500, Shopee: 550, "TikTok Shop": 199 } },
+  { id: "organic", name: "Organic / Direct", short: "OD", type: "Search & direct", sales: 1687, orders: 39, clicks: 512, color: "#0891b2", tint: "#0891b21f", channels: { "BCL.my": 800, Shopee: 700, "TikTok Shop": 187 } },
+  { id: "unknown", name: "Tidak dikenal pasti", short: "?", type: "No tracking data", sales: 938, orders: 24, clicks: 0, color: "#64748b", tint: "#64748b1f", channels: { "BCL.my": 312, Shopee: 512, "TikTok Shop": 114 } },
 ];
 
 const nav = [
@@ -153,7 +153,7 @@ function GoalGauge({ pct }: { pct: number }) {
 }
 
 const paymentBreakdown = (() => {
-  const palette = ["#34d399", "#ff7a45", "#5ec8e8", "#f0b23e", "#9fb8ac"];
+  const palette = ["#059669", "#ea580c", "#2563eb", "#d97706", "#7c3aed"];
   const map = new Map<string, { count: number; total: number }>();
   for (const order of orders) {
     const entry = map.get(order.payment) ?? { count: 0, total: 0 };
@@ -313,25 +313,25 @@ export default function Home() {
                 <button className="metric metric-featured metric-button" onClick={() => { setActive("sales"); setSalesTab("orders"); setStatus("Semua status"); }}>
                   <div className="metric-top"><span className="metric-kicker">Revenue</span><span className="positive">{summary.salesChange}</span></div>
                   <p>Jumlah jualan</p><h2>{currency(summary.sales)}</h2><small>{period === "Minggu ini" ? "RM2,638 lebih tinggi berbanding minggu lepas" : summary.label}</small>
-                  <Sparkline id="sales" data={salesSeries} stroke="#34d399" />
+                  <Sparkline id="sales" data={salesSeries} stroke="#059669" />
                   <span className="metric-link">Lihat pesanan</span>
                 </button>
                 <button className="metric metric-button" onClick={() => { setActive("sales"); setSalesTab("orders"); setStatus("Selesai"); }}>
                   <div className="metric-top"><span className="metric-kicker">Orders</span><span className="positive">{summary.orderChange}</span></div>
                   <p>Pesanan selesai</p><h2>{summary.orders.toLocaleString("en-MY")}</h2><small>{Math.round(summary.orders * 1.057).toLocaleString("en-MY")} jumlah pesanan</small>
-                  <Sparkline id="orders" data={ordersSeries} stroke="#5ec8e8" />
+                  <Sparkline id="orders" data={ordersSeries} stroke="#2563eb" />
                   <span className="metric-link">Tapis pesanan</span>
                 </button>
                 <button className="metric metric-button" onClick={() => { setActive("finance"); setFinanceTab("studio"); }}>
                   <div className="metric-top"><span className="metric-kicker">Commission</span><span className="positive">+16.4%</span></div>
                   <p>Komisen KretivWork</p><h2>{currency(summary.commission)}</h2><small>Kadar komisen semasa: 15%</small>
-                  <Sparkline id="commission" data={commissionSeries} stroke="#f0b23e" />
+                  <Sparkline id="commission" data={commissionSeries} stroke="#d97706" />
                   <span className="metric-link">Buka invoice</span>
                 </button>
                 <button className="metric metric-button" onClick={() => { setActive("sales"); setSalesTab("channels"); }}>
                   <div className="metric-top"><span className="metric-kicker">Average order</span><span className="negative">−2.1%</span></div>
                   <p>Purata nilai pesanan</p><h2>{currency(summary.average)}</h2><small>{period === "Minggu ini" ? "RM0.96 lebih rendah dari minggu lepas" : summary.label}</small>
-                  <Sparkline id="average" data={averageSeries} stroke="#ff7a45" />
+                  <Sparkline id="average" data={averageSeries} stroke="#7c3aed" />
                   <span className="metric-link">Banding saluran</span>
                 </button>
               </section>
@@ -543,7 +543,7 @@ function AttributionView({ onOpenOrders }: { onOpenOrders: (channel: string) => 
         <div className="panel-heading"><div><h3>Pecahan sumber</h3><p>Pilih sumber untuk melihat aliran</p></div><span className="live-pill"><i />Terkini</span></div>
         <div className="donut-section">
           <div className="donut-wrap">
-            <div className={`sales-donut ${selected !== "all" ? "donut-selected" : ""}`} style={{ background: selected !== "all" && activeSource ? `conic-gradient(${activeSource.color} 0 ${activeSource.sales / totalSales * 100}%, rgba(255,255,255,.08) ${activeSource.sales / totalSales * 100}% 100%)` : buildConicGradient(attributionSources.map((source) => ({ color: source.color, value: metric === "sales" ? source.sales : source.orders }))) }}><div><strong>{metric === "sales" ? currency(selectedSales).replace("MYR", "RM") : selectedOrders}</strong><span>{metric === "sales" ? "jumlah jualan" : "jumlah order"}</span></div></div>
+            <div className={`sales-donut ${selected !== "all" ? "donut-selected" : ""}`} style={{ background: selected !== "all" && activeSource ? `conic-gradient(${activeSource.color} 0 ${activeSource.sales / totalSales * 100}%, #e7eae5 ${activeSource.sales / totalSales * 100}% 100%)` : buildConicGradient(attributionSources.map((source) => ({ color: source.color, value: metric === "sales" ? source.sales : source.orders }))) }}><div><strong>{metric === "sales" ? currency(selectedSales).replace("MYR", "RM") : selectedOrders}</strong><span>{metric === "sales" ? "jumlah jualan" : "jumlah order"}</span></div></div>
           </div>
           <div className="source-legend">
             {attributionSources.map((source) => <button key={source.id} className={selected === source.id ? "active" : ""} onClick={() => setSelected(source.id)}><i style={{ background: source.color }} /><span><strong>{source.name}</strong><small>{source.orders} order</small></span><b>{metric === "sales" ? currency(source.sales) : source.orders}</b><em>{Math.round((metric === "sales" ? source.sales / totalSales : source.orders / totalOrders) * 100)}%</em></button>)}
