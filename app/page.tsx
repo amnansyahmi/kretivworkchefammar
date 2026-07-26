@@ -23,6 +23,8 @@ import type { DataSourceKey } from "../lib/config";
 import { mockOrders } from "../lib/sources/mock-orders";
 import type { Order } from "../lib/sources/types";
 import type { SourceStatus } from "../lib/sources";
+import { StatementPdfDocument, InvoicePdfDocument } from "../lib/pdf/documents";
+import { downloadPdf } from "../lib/pdf/download";
 
 type Lang = "bm" | "en";
 
@@ -112,7 +114,7 @@ const EN: Record<string, string> = {
   "Invois": "Invoice", "sedang disediakan": "is being prepared", "Kemas kini status": "Update status", "Status pesanan telah dikemas kini": "Order status updated",
   "PENYATA": "STATEMENT", "Jumlah komisen KretivWork": "Total KretivWork commission",
   "Pesanan pending, refund dan pembatalan telah dikecualikan daripada pengiraan.": "Pending orders, refunds and cancellations are excluded from the calculation.",
-  "Muat turun": "Download", "Luluskan penyata": "Approve statement", "Siap": "Done", "Tutup": "Close",
+  "Muat turun": "Download", "Menjana PDF…": "Generating PDF…", "Luluskan penyata": "Approve statement", "Siap": "Done", "Tutup": "Close",
   "Tukar kepada pandangan Chef Ammar untuk menguji fungsi kelulusan.": "Switch to Chef Ammar's view to test the approval function.",
   "Ikhtisar": "Summary", "Terperinci": "Detailed", "Description": "Description", "Amount": "Amount",
   "Weekly commission on completed sales": "Weekly commission on completed sales", "Commission rate": "Commission rate",
@@ -396,6 +398,7 @@ export default function Home() {
   const [approved, setApproved] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("draft");
   const [payMethod, setPayMethod] = useState<"bank" | "qr">("bank");
+  const [statusHydrated, setStatusHydrated] = useState(false);
   const [financeDocument, setFinanceDocument] = useState<FinanceDocument>(null);
   const [toast, setToast] = useState("");
   const [lang, setLang] = useState<Lang>("bm");
@@ -421,6 +424,30 @@ export default function Home() {
     const matchesQuery = `${order.id} ${order.customer} ${order.item} ${order.channel} ${order.payment}`.toLowerCase().includes(query.toLowerCase());
     return matchesQuery && (status === "Semua status" || order.status === status);
   }), [orderList, query, status]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/commission-status")
+      .then((res) => res.json())
+      .then((data: { approved: boolean; paid: boolean; payMethod: "bank" | "qr" }) => {
+        if (cancelled) return;
+        setApproved(data.approved);
+        setPaymentStatus(data.paid ? "paid" : data.approved ? "approved" : "draft");
+        setPayMethod(data.payMethod);
+      })
+      .catch((err) => console.error("Failed to load commission status", err))
+      .finally(() => { if (!cancelled) setStatusHydrated(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!statusHydrated) return;
+    fetch("/api/commission-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approved, paid: paymentStatus === "paid", payMethod }),
+    }).catch((err) => console.error("Failed to save commission status", err));
+  }, [statusHydrated, approved, paymentStatus, payMethod]);
 
   const notify = (message: string) => {
     setToast(message);
@@ -718,6 +745,15 @@ function ChannelsView({ notify }: { notify: (v: string) => void }) {
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [campaign, setCampaign] = useState<CampaignDetails | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/campaign")
+      .then((res) => res.json())
+      .then((data: { campaign: CampaignDetails | null }) => { if (!cancelled) setCampaign(data.campaign); })
+      .catch((err) => console.error("Failed to load campaign", err));
+    return () => { cancelled = true; };
+  }, []);
+
   return <section className="view-stack">
     <div className="channel-grid channel-grid-large">{channels.map((channel) => <article className="channel-card channel-detail" key={channel.name}><div className="channel-head"><ChannelLogo name={channel.name} color={channel.color} /><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div><h4>{channel.sales}</h4><div className="detail-grid"><span>{t("Pesanan")}<strong>{channel.orders}</strong></span><span>{t("Bahagian jualan")}<strong>{channel.share}%</strong></span><span>{t("Purata pesanan")}<strong>{currency(Number(channel.sales.replace(/[^0-9]/g, "")) / channel.orders)}</strong></span></div><div className="connection-ok"><i />{t("Sambungan aktif · 4 minit lalu")}</div></article>)}</div>
     <article className="panel insight-panel">
@@ -732,8 +768,19 @@ function ChannelsView({ notify }: { notify: (v: string) => void }) {
     {campaignOpen && <CampaignModal
       initial={campaign}
       onClose={() => setCampaignOpen(false)}
-      onSave={(details) => { setCampaign(details); setCampaignOpen(false); notify(t("Kempen telah dijadualkan")); }}
-      onCancel={() => { setCampaign(null); setCampaignOpen(false); notify(t("Kempen dibatalkan")); }}
+      onSave={(details) => {
+        setCampaign(details);
+        setCampaignOpen(false);
+        notify(t("Kempen telah dijadualkan"));
+        fetch("/api/campaign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(details) })
+          .catch((err) => console.error("Failed to save campaign", err));
+      }}
+      onCancel={() => {
+        setCampaign(null);
+        setCampaignOpen(false);
+        notify(t("Kempen dibatalkan"));
+        fetch("/api/campaign", { method: "DELETE" }).catch((err) => console.error("Failed to cancel campaign", err));
+      }}
     />}
   </section>;
 }
@@ -1000,10 +1047,41 @@ function OrderDrawer({ order, onClose, notify }: { order: Order; onClose: () => 
 function StatementDrawer({ weekIndex, role, approved, paid, onClose, onApprove }: { weekIndex: number; role: string; approved: boolean; paid: boolean; onClose: () => void; onApprove: () => void }) {
   const { t } = useLang();
   const [mode, setMode] = useState<"summary" | "detailed">("summary");
+  const [downloading, setDownloading] = useState(false);
   const week = weeklyStatements[weekIndex];
   const isCurrent = weekIndex === 0;
   const status = isCurrent ? (paid ? "Dibayar" : approved ? "Diluluskan" : "Perlu semakan") : "Dibayar";
   const canApprove = isCurrent && role === "Chef Ammar" && !approved;
+  const statusLabel = status === "Dibayar" ? "Paid" : status === "Diluluskan" ? "Approved" : "Pending review";
+
+  const downloadStatementPdf = async () => {
+    setDownloading(true);
+    try {
+      await downloadPdf(
+        <StatementPdfDocument
+          invoiceNo={week.invoiceNo}
+          period={week.period}
+          statusLabel={statusLabel}
+          ordersCount={week.orders}
+          netSalesLabel={currency(week.sales)}
+          commissionRateLabel={`RM${COMMISSION_PER_ITEM} / item`}
+          totalLabel={currency(week.commission)}
+          mode={mode}
+          orders={week.weekOrders.map((o) => ({
+            id: o.id,
+            customer: o.customer,
+            channel: o.channel,
+            item: o.item,
+            statusLabel: o.status === "Selesai" ? "Completed" : o.status === "Diproses" ? "Processing" : "Refund",
+            amountLabel: currency(o.amount),
+          }))}
+        />,
+        `${week.invoiceNo}-${mode}.pdf`
+      );
+    } finally {
+      setDownloading(false);
+    }
+  };
   return <div className="modal-layer drawer-layer" role="dialog" aria-modal="true"><div className="modal statement-modal drawer">
     <div className="screen-only">
       <button className="modal-close" onClick={onClose}><X size={20} /></button>
@@ -1022,7 +1100,7 @@ function StatementDrawer({ weekIndex, role, approved, paid, onClose, onApprove }
         <div className="statement-order-table">{week.weekOrders.map((o) => <div className="statement-order-row" key={o.id}><span className="product-thumb" style={{ background: o.productTone }}>{o.productCode}</span><span className="statement-order-info"><strong>{o.id}</strong><small>{o.customer} · {o.channel}</small></span><b>{currency(o.amount)}</b><StatusBadge status={o.status} /></div>)}</div>
       )}
       <div className="modal-actions">
-        <button className="secondary-button" onClick={() => window.print()}>{t("Muat turun")}</button>
+        <button className="secondary-button" onClick={downloadStatementPdf} disabled={downloading}>{downloading ? t("Menjana PDF…") : t("Muat turun")}</button>
         {canApprove ? <button className="primary-button" onClick={onApprove}>{t("Luluskan penyata")}</button> : <button className="primary-button" onClick={onClose}>{isCurrent && approved ? t("Siap") : t("Tutup")}</button>}
       </div>
       {isCurrent && role !== "Chef Ammar" && !approved && <small className="approval-hint">{t("Tukar kepada pandangan Chef Ammar untuk menguji fungsi kelulusan.")}</small>}
@@ -1076,6 +1154,38 @@ function FinanceDocumentDrawer({ type, paymentStatus, onClose, onPay }: { type: 
   const { t } = useLang();
   const paid = paymentStatus === "paid";
   const isReceipt = type === "receipt";
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadInvoicePdf = async () => {
+    setDownloading(true);
+    try {
+      await downloadPdf(
+        <InvoicePdfDocument
+          isReceipt={isReceipt}
+          docNo={isReceipt ? commissionWeek.receiptNo : commissionWeek.invoiceNo}
+          statusLabel={isReceipt ? "PAID" : paid ? "PAID" : "DUE"}
+          period={commissionWeek.period}
+          issuedDate={commissionWeek.issuedDate}
+          dueOrPaidLabel={isReceipt ? "Paid" : "Due"}
+          dueOrPaidDate={isReceipt ? commissionWeek.paidDate : commissionWeek.dueDate}
+          reference={commissionWeek.reference}
+          payToSub={commissionWeek.account}
+          lines={[
+            { description: "Weekly commission on completed sales", amount: currency(commissionWeek.netSales) },
+            { description: "Commission rate", amount: `RM${commissionWeek.perItem} × ${commissionWeek.itemsSold} item` },
+            { description: "Refund / cancellation excluded", amount: `-${currency(commissionWeek.excluded)}` },
+          ]}
+          totalLabel={isReceipt ? "Total paid" : "Amount due"}
+          totalAmount={currency(commissionWeek.commission)}
+          note={isReceipt ? "Dummy receipt generated after payment record was created in this dashboard." : "Dummy invoice for UI testing. Real version can later pull order totals from Shopee, TikTok Shop and BCL.my APIs."}
+        />,
+        `${isReceipt ? commissionWeek.receiptNo : commissionWeek.invoiceNo}.pdf`
+      );
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return <div className="modal-layer drawer-layer" role="dialog" aria-modal="true" aria-label={isReceipt ? "Resit bayaran" : t("Invoice komisen")}>
     <aside className="drawer finance-document-drawer">
       <div className="drawer-header"><div><p className="eyebrow">{isReceipt ? "PAYMENT RECEIPT" : "COMMISSION INVOICE"}</p><h2>{isReceipt ? commissionWeek.receiptNo : commissionWeek.invoiceNo}</h2></div><button className="modal-close" onClick={onClose}><X size={20} /></button></div>
@@ -1103,7 +1213,7 @@ function FinanceDocumentDrawer({ type, paymentStatus, onClose, onPay }: { type: 
         <div className="doc-total"><span>{isReceipt ? "Total paid" : "Amount due"}</span><strong>{currency(commissionWeek.commission)}</strong></div>
         {isReceipt ? <p className="doc-note">Dummy receipt generated after payment record was created in this dashboard.</p> : <p className="doc-note">Dummy invoice for UI testing. Real version can later pull order totals from Shopee, TikTok Shop and BCL.my APIs.</p>}
       </section>
-      <div className="drawer-actions"><button className="secondary-button" onClick={() => window.print()}>Print</button>{!paid && <button className="primary-button" onClick={onPay}>Pay KretivCo</button>}{paid && <button className="primary-button" onClick={onClose}>Done</button>}</div>
+      <div className="drawer-actions"><button className="secondary-button" onClick={downloadInvoicePdf} disabled={downloading}>{downloading ? t("Menjana PDF…") : "Download PDF"}</button>{!paid && <button className="primary-button" onClick={onPay}>Pay KretivCo</button>}{paid && <button className="primary-button" onClick={onClose}>Done</button>}</div>
     </aside>
   </div>;
 }
