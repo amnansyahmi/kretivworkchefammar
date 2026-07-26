@@ -1123,6 +1123,9 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
   .attribution-summary { flex-wrap: wrap; row-gap: 12px; margin-top: 10px; }
   .attribution-summary span { min-width: 0; flex: 1 1 40%; }
   .attribution-summary > i { display: none; }
+  .attribution-controls { flex-direction: column; align-items: stretch; }
+  .metric-toggle { width: 100%; }
+  .metric-toggle button { flex: 1; }
   .attribution-footer-note { align-items: flex-start; flex-wrap: wrap; }
   .attribution-footer-note button { margin-left: 25px; }
 
