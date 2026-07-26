@@ -1014,6 +1014,33 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
 .doc-note { font-size: 10px; line-height: 1.6; color: var(--muted); margin: 14px 0 0; }
 
 /* ==========================================================================
+   Print-only statement sheet — a plain letterhead-style document, kept
+   separate from the interactive UI so the printout never looks like a
+   screenshot of the app.
+   ========================================================================== */
+.print-sheet { display: none; }
+.print-sheet-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 14px; margin-bottom: 18px; }
+.print-sheet-brand strong { display: block; font-size: 17px; color: #111; }
+.print-sheet-brand span { display: block; font-size: 10px; color: #444; margin-top: 3px; }
+.print-sheet-doc-no { text-align: right; }
+.print-sheet-doc-no span { display: block; font-size: 9px; color: #444; text-transform: uppercase; letter-spacing: 0.06em; }
+.print-sheet-doc-no strong { display: block; font-size: 13px; color: #111; margin: 2px 0; }
+.print-sheet-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+.print-sheet-meta span { display: block; font-size: 9px; color: #444; text-transform: uppercase; letter-spacing: 0.06em; }
+.print-sheet-meta strong { display: block; font-size: 12px; color: #111; margin-top: 3px; }
+.print-sheet-table { width: 100%; min-width: 0; border-collapse: collapse; margin-bottom: 18px; font-size: 11px; }
+.print-sheet-table th { text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: #444; border-bottom: 1px solid #111; padding: 6px 8px; }
+.print-sheet-table td { padding: 7px 8px; border-bottom: 1px solid #ccc; color: #111; }
+.print-sheet-table th:last-child, .print-sheet-table td:last-child { text-align: right; }
+.print-sheet-summary-table td:first-child { color: #444; }
+.print-sheet-summary-table td:last-child { text-align: right; font-weight: 700; }
+.print-sheet-total { display: flex; justify-content: space-between; align-items: center; border-top: 2px solid #111; border-bottom: 2px solid #111; padding: 12px 8px; margin-bottom: 16px; }
+.print-sheet-total span { font-size: 11px; color: #111; font-weight: 700; }
+.print-sheet-total strong { font-size: 18px; color: #111; }
+.print-sheet-note { font-size: 10px; color: #444; line-height: 1.6; margin-bottom: 24px; }
+.print-sheet-footer { font-size: 9px; color: #666; border-top: 1px solid #ccc; padding-top: 10px; }
+
+/* ==========================================================================
    Toast
    ========================================================================== */
 .toast {
@@ -1164,14 +1191,27 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
 }
 
 @media print {
-  .sidebar, .topbar, .mobile-bottom-nav, .drawer-actions, .modal-close, .page-heading, .content > *:not(.statement-list), .statement-print-toggle { display: none !important; }
+  .sidebar, .topbar, .mobile-bottom-nav, .drawer-actions, .modal-close, .page-heading, .content, .statement-print-toggle, .screen-only { display: none !important; }
   .statement-order-table { max-height: none; }
   .app-shell, .workspace { min-height: 0; margin: 0; }
   .content { padding: 0; }
-  .modal-layer { position: static; background: white; padding: 0; }
-  .modal { box-shadow: none; width: 100%; }
-  .drawer { width: 100%; height: auto; box-shadow: none; }
-  .doc-paper { box-shadow: none; border: 0; }
+  .modal-layer { position: static; background: white; padding: 0; display: block; }
+  .modal, .modal.drawer { box-shadow: none; width: 100% !important; height: auto !important; padding: 0; }
+  .drawer { width: 100%; height: auto; box-shadow: none; padding: 0; }
+  .print-sheet { display: block !important; color: #111; background: white; padding: 0; max-width: 640px; margin: 0 auto; }
+
+  /* Ink-safe, letterhead-plain treatment for the invoice/receipt document */
+  .doc-paper { box-shadow: none; border: 0; background: white; padding: 0; }
+  .drawer-header { border-bottom: 2px solid #111; padding-bottom: 14px; margin-bottom: 4px; }
+  .drawer-header .eyebrow { color: #444; }
+  .drawer-header h2 { color: #111; }
+  .doc-topline, .doc-meta span, .doc-parties span { border-color: #ccc; }
+  .doc-topline strong, .doc-parties strong, .doc-meta strong, .doc-lines > div { color: #111; }
+  .doc-topline > b { border: 1px solid #111 !important; color: #111 !important; border-radius: 3px; }
+  .doc-parties span, .doc-lines > div:first-child { background: white; }
+  .doc-lines > div { background: white; border-color: #ccc; }
+  .doc-total { background: white !important; color: #111 !important; border: 2px solid #111; border-radius: 0; }
+  .doc-total span, .doc-total strong { color: #111 !important; }
 }
 
 /* ==========================================================================

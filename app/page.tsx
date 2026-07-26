@@ -930,26 +930,70 @@ function StatementDrawer({ weekIndex, role, approved, paid, onClose, onApprove }
   const status = isCurrent ? (paid ? "Dibayar" : approved ? "Diluluskan" : "Perlu semakan") : "Dibayar";
   const canApprove = isCurrent && role === "Chef Ammar" && !approved;
   return <div className="modal-layer drawer-layer" role="dialog" aria-modal="true"><div className="modal statement-modal drawer">
-    <button className="modal-close" onClick={onClose}><X size={20} /></button>
-    <p className="eyebrow">{t("PENYATA")} #{week.invoiceNo}</p>
-    <h2>{week.period}</h2>
-    <div className="statement-status-row"><span className={status === "Dibayar" || status === "Diluluskan" ? "approved-pill" : "review-pill"}>{t(status)}</span></div>
-    <div className="modal-summary"><span>{week.orders}<small>{t("Pesanan selesai")}</small></span><span>{currency(week.sales)}<small>{t("Jualan bersih")}</small></span><span>RM{COMMISSION_PER_ITEM}/item<small>{t("Kadar komisen")}</small></span></div>
-    <div className="modal-total"><span>{t("Jumlah komisen KretivWork")}</span><strong>{currency(week.commission)}</strong></div>
-    <div className="statement-print-toggle" role="tablist">
-      <button role="tab" aria-selected={mode === "summary"} className={mode === "summary" ? "active" : ""} onClick={() => setMode("summary")}>{t("Ikhtisar")}</button>
-      <button role="tab" aria-selected={mode === "detailed"} className={mode === "detailed" ? "active" : ""} onClick={() => setMode("detailed")}>{t("Terperinci")}</button>
+    <div className="screen-only">
+      <button className="modal-close" onClick={onClose}><X size={20} /></button>
+      <p className="eyebrow">{t("PENYATA")} #{week.invoiceNo}</p>
+      <h2>{week.period}</h2>
+      <div className="statement-status-row"><span className={status === "Dibayar" || status === "Diluluskan" ? "approved-pill" : "review-pill"}>{t(status)}</span></div>
+      <div className="modal-summary"><span>{week.orders}<small>{t("Pesanan selesai")}</small></span><span>{currency(week.sales)}<small>{t("Jualan bersih")}</small></span><span>RM{COMMISSION_PER_ITEM}/item<small>{t("Kadar komisen")}</small></span></div>
+      <div className="modal-total"><span>{t("Jumlah komisen KretivWork")}</span><strong>{currency(week.commission)}</strong></div>
+      <div className="statement-print-toggle" role="tablist">
+        <button role="tab" aria-selected={mode === "summary"} className={mode === "summary" ? "active" : ""} onClick={() => setMode("summary")}>{t("Ikhtisar")}</button>
+        <button role="tab" aria-selected={mode === "detailed"} className={mode === "detailed" ? "active" : ""} onClick={() => setMode("detailed")}>{t("Terperinci")}</button>
+      </div>
+      {mode === "summary" ? (
+        <p className="modal-note">{t("Pesanan pending, refund dan pembatalan telah dikecualikan daripada pengiraan.")}</p>
+      ) : (
+        <div className="statement-order-table">{week.weekOrders.map((o) => <div className="statement-order-row" key={o.id}><span className="product-thumb" style={{ background: o.productTone }}>{o.productCode}</span><span className="statement-order-info"><strong>{o.id}</strong><small>{o.customer} · {o.channel}</small></span><b>{currency(o.amount)}</b><StatusBadge status={o.status} /></div>)}</div>
+      )}
+      <div className="modal-actions">
+        <button className="secondary-button" onClick={() => window.print()}>{t("Muat turun")}</button>
+        {canApprove ? <button className="primary-button" onClick={onApprove}>{t("Luluskan penyata")}</button> : <button className="primary-button" onClick={onClose}>{isCurrent && approved ? t("Siap") : t("Tutup")}</button>}
+      </div>
+      {isCurrent && role !== "Chef Ammar" && !approved && <small className="approval-hint">{t("Tukar kepada pandangan Chef Ammar untuk menguji fungsi kelulusan.")}</small>}
     </div>
-    {mode === "summary" ? (
-      <p className="modal-note">{t("Pesanan pending, refund dan pembatalan telah dikecualikan daripada pengiraan.")}</p>
-    ) : (
-      <div className="statement-order-table">{week.weekOrders.map((o) => <div className="statement-order-row" key={o.id}><span className="product-thumb" style={{ background: o.productTone }}>{o.productCode}</span><span className="statement-order-info"><strong>{o.id}</strong><small>{o.customer} · {o.channel}</small></span><b>{currency(o.amount)}</b><StatusBadge status={o.status} /></div>)}</div>
-    )}
-    <div className="modal-actions">
-      <button className="secondary-button" onClick={() => window.print()}>{t("Muat turun")}</button>
-      {canApprove ? <button className="primary-button" onClick={onApprove}>{t("Luluskan penyata")}</button> : <button className="primary-button" onClick={onClose}>{isCurrent && approved ? t("Siap") : t("Tutup")}</button>}
+
+    <div className="print-sheet">
+      <header className="print-sheet-head">
+        <div className="print-sheet-brand">
+          <strong>KretivCo Sdn. Bhd.</strong>
+          <span>Commission Statement · KretivWork × Chef Ammar</span>
+        </div>
+        <div className="print-sheet-doc-no">
+          <span>Statement No.</span>
+          <strong>{week.invoiceNo}</strong>
+          <span>{week.period}</span>
+        </div>
+      </header>
+
+      <div className="print-sheet-meta">
+        <div><span>Bill to</span><strong>Chef Ammar Group</strong></div>
+        <div><span>Pay to</span><strong>KretivCo Sdn. Bhd.</strong></div>
+        <div><span>Status</span><strong>{status === "Dibayar" ? "Paid" : status === "Diluluskan" ? "Approved" : "Pending review"}</strong></div>
+      </div>
+
+      {mode === "detailed" && (
+        <table className="print-sheet-table">
+          <thead><tr><th>Order</th><th>Customer</th><th>Channel</th><th>Product</th><th>Status</th><th>Amount</th></tr></thead>
+          <tbody>
+            {week.weekOrders.map((o) => <tr key={o.id}><td>{o.id}</td><td>{o.customer}</td><td>{o.channel}</td><td>{o.item}</td><td>{o.status === "Selesai" ? "Completed" : o.status === "Diproses" ? "Processing" : "Refund"}</td><td>{currency(o.amount)}</td></tr>)}
+          </tbody>
+        </table>
+      )}
+
+      <table className="print-sheet-table print-sheet-summary-table">
+        <tbody>
+          <tr><td>Orders completed</td><td>{week.orders}</td></tr>
+          <tr><td>Net sales</td><td>{currency(week.sales)}</td></tr>
+          <tr><td>Commission rate</td><td>RM{COMMISSION_PER_ITEM} / item</td></tr>
+        </tbody>
+      </table>
+
+      <div className="print-sheet-total"><span>Total KretivWork commission</span><strong>{currency(week.commission)}</strong></div>
+
+      <p className="print-sheet-note">Pending orders, refunds and cancellations are excluded from this calculation.</p>
+      <footer className="print-sheet-footer">KretivWork × Chef Ammar Central Sales — this is a system-generated statement.</footer>
     </div>
-    {isCurrent && role !== "Chef Ammar" && !approved && <small className="approval-hint">{t("Tukar kepada pandangan Chef Ammar untuk menguji fungsi kelulusan.")}</small>}
   </div></div>;
 }
 
