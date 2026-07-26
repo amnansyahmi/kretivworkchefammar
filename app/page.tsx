@@ -113,6 +113,16 @@ const EN: Record<string, string> = {
   "Weekly commission on completed sales": "Weekly commission on completed sales", "Commission rate": "Commission rate",
   "Invoice komisen diluluskan.": "Commission invoice approved.", "Bayaran dummy ke KretivCo direkodkan.": "Dummy payment to KretivCo recorded.",
   "Penyata telah diluluskan": "Statement has been approved", "Fail CSV sedang disediakan": "CSV file is being prepared",
+  "Isn": "Mon", "Sel": "Tue", "Rab": "Wed", "Kha": "Thu", "Jum": "Fri", "Sab": "Sat", "Ahd": "Sun",
+  "Dijadualkan": "Scheduled", "Lihat kempen": "View campaign",
+  "Kempen telah dijadualkan": "Campaign has been scheduled", "Kempen dibatalkan": "Campaign cancelled",
+  "Kempen video TikTok Shop": "TikTok Shop video campaign",
+  "Susulan daripada insight: TikTok Shop berkembang 24.8% minggu ini.": "Following up on the insight: TikTok Shop grew 24.8% this week.",
+  "RANCANG KEMPEN": "PLAN CAMPAIGN", "Kemas kini kempen": "Update campaign", "Kempen baharu": "New campaign",
+  "Nama kempen": "Campaign name", "Saluran sasaran": "Target channel", "Jenis kandungan": "Content type",
+  "Video pendek": "Short video", "Siaran langsung": "Livestream", "Post foto": "Photo post", "KOL & Affiliate": "KOL & Affiliate",
+  "Hari disyorkan": "Recommended days", "Bajet (RM, pilihan)": "Budget (RM, optional)", "Nota": "Notes",
+  "Batalkan kempen": "Cancel campaign", "Jadualkan kempen": "Schedule campaign",
 };
 
 const LangContext = createContext<{ lang: Lang; t: (s: string) => string }>({ lang: "bm", t: (s) => s });
@@ -550,7 +560,7 @@ export default function Home() {
                   <div className="chart-area">
                     <div className="y-axis"><span>{formatChartValue(chartCeiling)}</span><span>{formatChartValue(chartCeiling * .75)}</span><span>{formatChartValue(chartCeiling * .5)}</span><span>{formatChartValue(chartCeiling * .25)}</span><span>0</span></div>
                     <div className="bars">
-                      {chart.map((item) => <button className={`bar-day ${selectedChartDay === item.day ? "selected" : ""}`} key={item.day} onClick={() => setSelectedChartDay(selectedChartDay === item.day ? null : item.day)}><span className="bar-stack"><span className="bar bcl" data-tooltip={`${item.date} · BCL.my · ${formatChartValue(chartValue(item.bcl))}`} style={{ height: `${chartValue(item.bcl) / chartCeiling * 100}%` }} /><span className="bar shopee" data-tooltip={`${item.date} · Shopee · ${formatChartValue(chartValue(item.shopee))}`} style={{ height: `${chartValue(item.shopee) / chartCeiling * 100}%` }} /><span className="bar tiktok" data-tooltip={`${item.date} · TikTok · ${formatChartValue(chartValue(item.tiktok))}`} style={{ height: `${chartValue(item.tiktok) / chartCeiling * 100}%` }} /></span><span className="day-label">{item.day}</span></button>)}
+                      {chart.map((item) => <button className={`bar-day ${selectedChartDay === item.day ? "selected" : ""}`} key={item.day} onClick={() => setSelectedChartDay(selectedChartDay === item.day ? null : item.day)}><span className="bar-stack"><span className="bar bcl" data-tooltip={`${item.date} · BCL.my · ${formatChartValue(chartValue(item.bcl))}`} style={{ height: `${chartValue(item.bcl) / chartCeiling * 100}%` }} /><span className="bar shopee" data-tooltip={`${item.date} · Shopee · ${formatChartValue(chartValue(item.shopee))}`} style={{ height: `${chartValue(item.shopee) / chartCeiling * 100}%` }} /><span className="bar tiktok" data-tooltip={`${item.date} · TikTok · ${formatChartValue(chartValue(item.tiktok))}`} style={{ height: `${chartValue(item.tiktok) / chartCeiling * 100}%` }} /></span><span className="day-label">{t(item.day)}</span></button>)}
                     </div>
                   </div>
                   {selectedDay && <div className="chart-selection"><span><small>{selectedDay.date}</small><strong>{formatChartValue(chartValue(selectedDay.bcl + selectedDay.shopee + selectedDay.tiktok))}</strong></span><span><small>{t("Saluran tertinggi")}</small><strong>{selectedDay.bcl >= selectedDay.shopee && selectedDay.bcl >= selectedDay.tiktok ? "BCL.my" : selectedDay.shopee >= selectedDay.tiktok ? "Shopee" : "TikTok Shop"}</strong></span><button onClick={() => openOrdersFor("Semua")}>{t("Lihat pesanan hari ini")}</button></div>}
@@ -636,7 +646,7 @@ export default function Home() {
           {active === "sales" && <>
             <SectionTabs value={salesTab} onChange={setSalesTab} tabs={[{ id: "orders", label: "Pesanan" }, { id: "channels", label: "Saluran" }, { id: "sources", label: "Sumber" }]} />
             {salesTab === "orders" && <OrdersPanel orders={filteredOrders} query={query} setQuery={setQuery} status={status} setStatus={setStatus} expanded notify={notify} onSelectOrder={setSelectedOrder} />}
-            {salesTab === "channels" && <ChannelsView />}
+            {salesTab === "channels" && <ChannelsView notify={notify} />}
             {salesTab === "sources" && <AttributionView onOpenOrders={openOrdersFor} />}
           </>}
           {active === "finance" && <>
@@ -701,9 +711,66 @@ function OrdersPanel({ orders, query, setQuery, status, setStatus, expanded, not
   </section>;
 }
 
-function ChannelsView() {
+type CampaignDetails = { name: string; channel: string; contentType: string; days: string[]; budget: string; notes: string };
+
+function ChannelsView({ notify }: { notify: (v: string) => void }) {
   const { t } = useLang();
-  return <section className="view-stack"><div className="channel-grid channel-grid-large">{channels.map((channel) => <article className="channel-card channel-detail" key={channel.name}><div className="channel-head"><ChannelLogo name={channel.name} color={channel.color} /><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div><h4>{channel.sales}</h4><div className="detail-grid"><span>{t("Pesanan")}<strong>{channel.orders}</strong></span><span>{t("Bahagian jualan")}<strong>{channel.share}%</strong></span><span>{t("Purata pesanan")}<strong>{currency(Number(channel.sales.replace(/[^0-9]/g, "")) / channel.orders)}</strong></span></div><div className="connection-ok"><i />{t("Sambungan aktif · 4 minit lalu")}</div></article>)}</div><article className="panel insight-panel"><div><span className="insight-index">01</span><h3>{t("TikTok Shop berkembang paling pantas")}</h3><p>{t("Jualan meningkat 24.8% minggu ini. Pertimbangkan kandungan video masakan pada Jumaat dan Sabtu.")}</p></div><button>{t("Rancang kempen")}</button></article></section>;
+  const [campaignOpen, setCampaignOpen] = useState(false);
+  const [campaign, setCampaign] = useState<CampaignDetails | null>(null);
+
+  return <section className="view-stack">
+    <div className="channel-grid channel-grid-large">{channels.map((channel) => <article className="channel-card channel-detail" key={channel.name}><div className="channel-head"><ChannelLogo name={channel.name} color={channel.color} /><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div><h4>{channel.sales}</h4><div className="detail-grid"><span>{t("Pesanan")}<strong>{channel.orders}</strong></span><span>{t("Bahagian jualan")}<strong>{channel.share}%</strong></span><span>{t("Purata pesanan")}<strong>{currency(Number(channel.sales.replace(/[^0-9]/g, "")) / channel.orders)}</strong></span></div><div className="connection-ok"><i />{t("Sambungan aktif · 4 minit lalu")}</div></article>)}</div>
+    <article className="panel insight-panel">
+      <div>
+        <span className="insight-index">01</span>
+        <h3>{t("TikTok Shop berkembang paling pantas")}</h3>
+        <p>{t("Jualan meningkat 24.8% minggu ini. Pertimbangkan kandungan video masakan pada Jumaat dan Sabtu.")}</p>
+        {campaign && <div className="campaign-status"><span className="approved-pill">{t("Dijadualkan")}</span><span>{campaign.name} · {campaign.days.map((d) => t(d)).join(", ")}</span></div>}
+      </div>
+      <button onClick={() => setCampaignOpen(true)}>{campaign ? t("Lihat kempen") : t("Rancang kempen")}</button>
+    </article>
+    {campaignOpen && <CampaignModal
+      initial={campaign}
+      onClose={() => setCampaignOpen(false)}
+      onSave={(details) => { setCampaign(details); setCampaignOpen(false); notify(t("Kempen telah dijadualkan")); }}
+      onCancel={() => { setCampaign(null); setCampaignOpen(false); notify(t("Kempen dibatalkan")); }}
+    />}
+  </section>;
+}
+
+function CampaignModal({ initial, onClose, onSave, onCancel }: { initial: CampaignDetails | null; onClose: () => void; onSave: (details: CampaignDetails) => void; onCancel: () => void }) {
+  const { t } = useLang();
+  const [name, setName] = useState(initial?.name ?? t("Kempen video TikTok Shop"));
+  const [channel, setChannel] = useState(initial?.channel ?? "TikTok Shop");
+  const [contentType, setContentType] = useState(initial?.contentType ?? "Video pendek");
+  const [days, setDays] = useState<string[]>(initial?.days ?? ["Jum", "Sab"]);
+  const [budget, setBudget] = useState(initial?.budget ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? t("Susulan daripada insight: TikTok Shop berkembang 24.8% minggu ini."));
+
+  const toggleDay = (day: string) => setDays((current) => current.includes(day) ? current.filter((d) => d !== day) : [...current, day]);
+
+  return <div className="modal-layer" role="dialog" aria-modal="true">
+    <div className="modal campaign-modal">
+      <button className="modal-close" onClick={onClose}><X size={20} /></button>
+      <p className="eyebrow">{t("RANCANG KEMPEN")}</p>
+      <h2>{initial ? t("Kemas kini kempen") : t("Kempen baharu")}</h2>
+      <label className="field-label">{t("Nama kempen")}<input value={name} onChange={(e) => setName(e.target.value)} /></label>
+      <div className="campaign-grid">
+        <label className="field-label">{t("Saluran sasaran")}<Dropdown value={channel} onChange={setChannel} options={channels.map((c) => c.name)} ariaLabel={t("Saluran sasaran")} /></label>
+        <label className="field-label">{t("Jenis kandungan")}<Dropdown value={contentType} onChange={setContentType} options={["Video pendek", "Siaran langsung", "Post foto", "KOL & Affiliate"].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Jenis kandungan")} /></label>
+      </div>
+      <span className="field-label">{t("Hari disyorkan")}</span>
+      <div className="day-picker">
+        {chart.map((c) => <button type="button" key={c.day} className={days.includes(c.day) ? "active" : ""} onClick={() => toggleDay(c.day)}>{t(c.day)}</button>)}
+      </div>
+      <label className="field-label">{t("Bajet (RM, pilihan)")}<input value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="500" inputMode="numeric" /></label>
+      <label className="field-label">{t("Nota")}<textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} /></label>
+      <div className="modal-actions">
+        {initial && <button className="secondary-button" onClick={onCancel}>{t("Batalkan kempen")}</button>}
+        <button className="primary-button" disabled={!name.trim() || days.length === 0} onClick={() => onSave({ name, channel, contentType, days, budget, notes })}>{initial ? t("Kemas kini kempen") : t("Jadualkan kempen")}</button>
+      </div>
+    </div>
+  </div>;
 }
 
 function AttributionView({ onOpenOrders }: { onOpenOrders: (channel: string) => void }) {
