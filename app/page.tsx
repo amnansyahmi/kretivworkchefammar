@@ -165,9 +165,9 @@ const periodSummaries = {
 };
 
 const channels = [
-  { name: "BCL.my", sub: "Direct sales", sales: "RM8,412", orders: 184, share: 45, color: "#d97706", tint: "#d977061f", change: "+18.2%" },
-  { name: "Shopee", sub: "Marketplace", sales: "RM6,236", orders: 147, share: 33, color: "#ea580c", tint: "#ea580c1f", change: "+9.4%" },
-  { name: "TikTok Shop", sub: "Social commerce", sales: "RM4,098", orders: 92, share: 22, color: "#0d9488", tint: "#0d94881f", change: "+24.8%" },
+  { name: "BCL.my", sub: "Direct sales", sales: "RM8,412", orders: 184, share: 45, color: "#d97706", change: "+18.2%" },
+  { name: "Shopee", sub: "Marketplace", sales: "RM6,236", orders: 147, share: 33, color: "#ea580c", change: "+9.4%" },
+  { name: "TikTok Shop", sub: "Social commerce", sales: "RM4,098", orders: 92, share: 22, color: "#0d9488", change: "+24.8%" },
 ];
 
 type PaymentStatus = "draft" | "approved" | "paid";
@@ -242,12 +242,12 @@ function StatusBadge({ status }: { status: Order["status"] }) {
   return <span className={`status status-${status.toLowerCase()}`}><span />{t(status)}</span>;
 }
 
-function ChannelLogo({ name, tint, color }: { name: string; tint: string; color: string }) {
+function ChannelLogo({ name, color }: { name: string; color: string }) {
   const icon =
-    name === "Shopee" ? <SiShopee size={16} /> :
-    name === "TikTok Shop" ? <SiTiktok size={15} /> :
-    <Store size={17} strokeWidth={2} />;
-  return <span className="channel-logo" style={{ background: tint, color }}>{icon}</span>;
+    name === "Shopee" ? <SiShopee size={20} /> :
+    name === "TikTok Shop" ? <SiTiktok size={19} /> :
+    <Store size={21} strokeWidth={2} />;
+  return <span className="channel-logo" style={{ color }}>{icon}</span>;
 }
 
 function Dropdown({ value, options, onChange, ariaLabel, className }: { value: string; options: (string | { value: string; label: string })[]; onChange: (value: string) => void; ariaLabel?: string; className?: string }) {
@@ -620,7 +620,7 @@ export default function Home() {
                 <div className="section-heading"><div><h3>{t("Prestasi saluran")}</h3><p>{t("Bahagian jualan minggu ini")}</p></div><button onClick={() => { setActive("sales"); setSalesTab("channels"); }}>{t("Lihat semua")}</button></div>
                 <div className="channel-grid">
                   {channels.map((channel) => <button className="channel-card channel-card-button" key={channel.name} onClick={() => openOrdersFor(channel.name)}>
-                    <div className="channel-head"><ChannelLogo name={channel.name} tint={channel.tint} color={channel.color} /><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div>
+                    <div className="channel-head"><ChannelLogo name={channel.name} color={channel.color} /><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div>
                     <h4>{channel.sales}</h4><p>{channel.orders} {t("pesanan")} · {channel.share}% {t("daripada jualan")}</p>
                     <div className="progress"><i style={{ width: `${channel.share}%`, background: channel.color }} /></div>
                   </button>)}
@@ -703,7 +703,7 @@ function OrdersPanel({ orders, query, setQuery, status, setStatus, expanded, not
 
 function ChannelsView() {
   const { t } = useLang();
-  return <section className="view-stack"><div className="channel-grid channel-grid-large">{channels.map((channel) => <article className="channel-card channel-detail" key={channel.name}><div className="channel-head"><ChannelLogo name={channel.name} tint={channel.tint} color={channel.color} /><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div><h4>{channel.sales}</h4><div className="detail-grid"><span>{t("Pesanan")}<strong>{channel.orders}</strong></span><span>{t("Bahagian jualan")}<strong>{channel.share}%</strong></span><span>{t("Purata pesanan")}<strong>{currency(Number(channel.sales.replace(/[^0-9]/g, "")) / channel.orders)}</strong></span></div><div className="connection-ok"><i />{t("Sambungan aktif · 4 minit lalu")}</div></article>)}</div><article className="panel insight-panel"><div><span className="insight-index">01</span><h3>{t("TikTok Shop berkembang paling pantas")}</h3><p>{t("Jualan meningkat 24.8% minggu ini. Pertimbangkan kandungan video masakan pada Jumaat dan Sabtu.")}</p></div><button>{t("Rancang kempen")}</button></article></section>;
+  return <section className="view-stack"><div className="channel-grid channel-grid-large">{channels.map((channel) => <article className="channel-card channel-detail" key={channel.name}><div className="channel-head"><ChannelLogo name={channel.name} color={channel.color} /><div><strong>{channel.name}</strong><span>{channel.sub}</span></div><b>{channel.change}</b></div><h4>{channel.sales}</h4><div className="detail-grid"><span>{t("Pesanan")}<strong>{channel.orders}</strong></span><span>{t("Bahagian jualan")}<strong>{channel.share}%</strong></span><span>{t("Purata pesanan")}<strong>{currency(Number(channel.sales.replace(/[^0-9]/g, "")) / channel.orders)}</strong></span></div><div className="connection-ok"><i />{t("Sambungan aktif · 4 minit lalu")}</div></article>)}</div><article className="panel insight-panel"><div><span className="insight-index">01</span><h3>{t("TikTok Shop berkembang paling pantas")}</h3><p>{t("Jualan meningkat 24.8% minggu ini. Pertimbangkan kandungan video masakan pada Jumaat dan Sabtu.")}</p></div><button>{t("Rancang kempen")}</button></article></section>;
 }
 
 function AttributionView({ onOpenOrders }: { onOpenOrders: (channel: string) => void }) {
@@ -773,7 +773,7 @@ function AttributionView({ onOpenOrders }: { onOpenOrders: (channel: string) => 
           <div className="flow-destinations">
             {Object.entries(selectedChannels).map(([name, value]) => {
               const channel = channels.find((item) => item.name === name)!;
-              return <button key={name} onClick={() => onOpenOrders(name)}><ChannelLogo name={name} tint={channel.tint} color={channel.color} /><span><small>{t("CHECKOUT DI")}</small><strong>{name}</strong><em><i style={{ width: `${value / maxChannel * 100}%`, background: channel.color }} /></em></span><b>{currency(value)}<small>{Math.round(value / selectedSales * 100)}%</small></b></button>;
+              return <button key={name} onClick={() => onOpenOrders(name)}><ChannelLogo name={name} color={channel.color} /><span><small>{t("CHECKOUT DI")}</small><strong>{name}</strong><em><i style={{ width: `${value / maxChannel * 100}%`, background: channel.color }} /></em></span><b>{currency(value)}<small>{Math.round(value / selectedSales * 100)}%</small></b></button>;
             })}
           </div>
         </div>
@@ -898,7 +898,7 @@ function TeamView({ notify }: { notify: (v: string) => void }) {
 
 function SettingsView({ notify }: { notify: (v: string) => void }) {
   const { t } = useLang();
-  return <section className="settings-grid"><article className="panel settings-panel"><h3>{t("Tetapan komisen")}</h3><p>{t("Kadar ini digunakan untuk penyata baharu.")}</p><label>{t("Kadar komisen KretivWork")}<div style={{ width: 170 }}><span style={{ paddingLeft: 12 }}>RM</span><input defaultValue={COMMISSION_PER_ITEM} style={{ width: 40, padding: "0 4px" }} /><span style={{ paddingRight: 12 }}>/ item</span></div></label><button className="primary-button" onClick={() => notify(t("Tetapan komisen disimpan"))}>{t("Simpan perubahan")}</button></article><article className="panel settings-panel"><h3>{t("Sambungan platform")}</h3><p>{t("Status sumber data pesanan.")}</p>{channels.map((channel) => { const issue = channel.name === "TikTok Shop"; return <button className={`integration-row ${issue ? "has-warning" : ""}`} key={channel.name} onClick={() => issue && notify(t("TikTok Shop: sambungkan semula token API."))}><ChannelLogo name={channel.name} tint={channel.tint} color={channel.color} /><span><strong>{channel.name}</strong><small>{issue ? t("Perlu sambung semula") : t("Disambungkan")}</small></span><span className="integration-state"><i />{issue ? t("Semak") : t("Aktif")}</span></button>; })}</article></section>;
+  return <section className="settings-grid"><article className="panel settings-panel"><h3>{t("Tetapan komisen")}</h3><p>{t("Kadar ini digunakan untuk penyata baharu.")}</p><label>{t("Kadar komisen KretivWork")}<div style={{ width: 170 }}><span style={{ paddingLeft: 12 }}>RM</span><input defaultValue={COMMISSION_PER_ITEM} style={{ width: 40, padding: "0 4px" }} /><span style={{ paddingRight: 12 }}>/ item</span></div></label><button className="primary-button" onClick={() => notify(t("Tetapan komisen disimpan"))}>{t("Simpan perubahan")}</button></article><article className="panel settings-panel"><h3>{t("Sambungan platform")}</h3><p>{t("Status sumber data pesanan.")}</p>{channels.map((channel) => { const issue = channel.name === "TikTok Shop"; return <button className={`integration-row ${issue ? "has-warning" : ""}`} key={channel.name} onClick={() => issue && notify(t("TikTok Shop: sambungkan semula token API."))}><ChannelLogo name={channel.name} color={channel.color} /><span><strong>{channel.name}</strong><small>{issue ? t("Perlu sambung semula") : t("Disambungkan")}</small></span><span className="integration-state"><i />{issue ? t("Semak") : t("Aktif")}</span></button>; })}</article></section>;
 }
 
 function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
