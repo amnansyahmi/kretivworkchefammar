@@ -8,6 +8,13 @@
       "when": 1785042714819,
       "tag": "0000_hard_flatman",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785043684698,
+      "tag": "0001_jazzy_mesmero",
+      "breakpoints": true
     }
   ]
 }
