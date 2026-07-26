@@ -19,6 +19,10 @@ import {
 import { SiShopee, SiTiktok } from "react-icons/si";
 import { QRCodeSVG } from "qrcode.react";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { DataSourceKey } from "../lib/config";
+import { mockOrders } from "../lib/sources/mock-orders";
+import type { Order } from "../lib/sources/types";
+import type { SourceStatus } from "../lib/sources";
 
 type Lang = "bm" | "en";
 
@@ -94,6 +98,7 @@ const EN: Record<string, string> = {
   "Kadar komisen KretivWork": "KretivWork commission rate", "Simpan perubahan": "Save changes", "Tetapan komisen disimpan": "Commission settings saved",
   "Sambungan platform": "Platform connections", "Status sumber data pesanan.": "Order data source status.",
   "Perlu sambung semula": "Needs reconnect", "Disambungkan": "Connected", "Semak": "Review",
+  "Data ujian (mock)": "Test data (mock)", "Ralat sambungan API": "API connection error", "Memuatkan status…": "Loading status…",
   "TikTok Shop: sambungkan semula token API.": "TikTok Shop: please reconnect the API token.",
   "Import data pesanan": "Import order data",
   "Muat naik CSV daripada Shopee atau TikTok Shop. Pesanan pendua akan disemak secara automatik.": "Upload a CSV from Shopee or TikTok Shop. Duplicate orders are checked automatically.",
@@ -130,28 +135,7 @@ function useLang() {
   return useContext(LangContext);
 }
 
-type Order = {
-  id: string;
-  customer: string;
-  initials: string;
-  channel: "BCL.my" | "Shopee" | "TikTok Shop";
-  item: string;
-  productCode: string;
-  productTone: string;
-  payment: string;
-  amount: number;
-  time: string;
-  status: "Selesai" | "Diproses" | "Refund";
-};
-
-const orders: Order[] = [
-  { id: "#CA-1048", customer: "Farah Nadia", initials: "FN", channel: "BCL.my", item: "Rempah Mandi 140g × 2", productCode: "MA", productTone: "#b87724", payment: "FPX", amount: 51.8, time: "Hari ini, 10:42 AM", status: "Selesai" },
-  { id: "#CA-1047", customer: "Syafiq Roslan", initials: "SR", channel: "TikTok Shop", item: "Rempah Kabsah 140g × 1", productCode: "KA", productTone: "#7c5030", payment: "TikTok Pay", amount: 25.9, time: "Hari ini, 9:18 AM", status: "Diproses" },
-  { id: "#CA-1046", customer: "Aina Sofea", initials: "AS", channel: "Shopee", item: "Set Mandi + Beriani × 1", productCode: "SET", productTone: "#1d6049", payment: "ShopeePay", amount: 49.8, time: "Semalam, 8:33 PM", status: "Selesai" },
-  { id: "#CA-1045", customer: "Mohd Firdaus", initials: "MF", channel: "BCL.my", item: "Rempah Beriani 140g × 3", productCode: "BE", productTone: "#9b5f28", payment: "Kad debit", amount: 77.7, time: "Semalam, 5:07 PM", status: "Selesai" },
-  { id: "#CA-1044", customer: "Nurin Izzati", initials: "NI", channel: "Shopee", item: "Rempah Maklubah 140g × 1", productCode: "MK", productTone: "#375846", payment: "ShopeePay", amount: 25.9, time: "17 Jul, 3:24 PM", status: "Refund" },
-  { id: "#CA-1043", customer: "Daniel Lim", initials: "DL", channel: "TikTok Shop", item: "Rempah Bukhari 140g × 2", productCode: "BU", productTone: "#ba7824", payment: "TikTok Pay", amount: 51.8, time: "17 Jul, 1:51 PM", status: "Selesai" },
-];
+const orders: Order[] = mockOrders;
 
 const chart = [
   { day: "Isn", date: "13 Jul", bcl: 850, shopee: 620, tiktok: 390 },
@@ -416,11 +400,27 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const [lang, setLang] = useState<Lang>("bm");
   const t = (s: string) => (lang === "en" ? EN[s] ?? s : s);
+  const [liveOrders, setLiveOrders] = useState<Order[] | null>(null);
+  const [sourceStatus, setSourceStatus] = useState<Record<DataSourceKey, SourceStatus> | null>(null);
 
-  const filteredOrders = useMemo(() => orders.filter((order) => {
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/orders")
+      .then((res) => res.json())
+      .then((data: { orders: Order[]; sources: Record<DataSourceKey, SourceStatus> }) => {
+        if (cancelled) return;
+        setLiveOrders(data.orders);
+        setSourceStatus(data.sources);
+      })
+      .catch((err) => console.error("Failed to load orders", err));
+    return () => { cancelled = true; };
+  }, []);
+
+  const orderList = liveOrders ?? orders;
+  const filteredOrders = useMemo(() => orderList.filter((order) => {
     const matchesQuery = `${order.id} ${order.customer} ${order.item} ${order.channel} ${order.payment}`.toLowerCase().includes(query.toLowerCase());
     return matchesQuery && (status === "Semua status" || order.status === status);
-  }), [query, status]);
+  }), [orderList, query, status]);
 
   const notify = (message: string) => {
     setToast(message);
@@ -657,7 +657,7 @@ export default function Home() {
           </>}
           {active === "settings" && <>
             <SectionTabs value={settingsTab} onChange={setSettingsTab} tabs={[{ id: "system", label: "Sistem" }, { id: "team", label: "Pasukan" }]} />
-            {settingsTab === "system" && <SettingsView notify={notify} />}
+            {settingsTab === "system" && <SettingsView notify={notify} sourceStatus={sourceStatus} />}
             {settingsTab === "team" && <TeamView notify={notify} />}
           </>}
         </div>
@@ -963,9 +963,17 @@ function TeamView({ notify }: { notify: (v: string) => void }) {
   return <section className="panel team-panel"><div className="panel-heading"><div><h3>{t("Akses pasukan")}</h3><p>{t("Peranan dan tahap akses")}</p></div><button className="primary-button" onClick={() => notify(t("Jemputan pengguna baharu dibuka"))}>{t("Jemput pengguna")}</button></div>{[{ name: "Amnan Syahmi", email: "amnan@kretivwork.my", role: "Administrator", initials: "AS" }, { name: "Chef Ammar", email: "ammar@chefammar.com", role: "Approver", initials: "CA" }, { name: "Finance KretivWork", email: "finance@kretivwork.my", role: "Finance", initials: "FK" }].map((user) => <div className="team-row" key={user.email}><span className="avatar">{user.initials}</span><span><strong>{user.name}</strong><small>{user.email}</small></span><b>{user.role}</b><span className="status status-selesai"><span />{t("Aktif")}</span></div>)}</section>;
 }
 
-function SettingsView({ notify }: { notify: (v: string) => void }) {
+const CHANNEL_TO_SOURCE_KEY: Record<string, DataSourceKey> = { "BCL.my": "bclmy", Shopee: "shopee", "TikTok Shop": "tiktok" };
+
+function SettingsView({ notify, sourceStatus }: { notify: (v: string) => void; sourceStatus: Record<DataSourceKey, SourceStatus> | null }) {
   const { t } = useLang();
-  return <section className="settings-grid"><article className="panel settings-panel"><h3>{t("Tetapan komisen")}</h3><p>{t("Kadar ini digunakan untuk penyata baharu.")}</p><label>{t("Kadar komisen KretivWork")}<div style={{ width: 170 }}><span style={{ paddingLeft: 12 }}>RM</span><input defaultValue={COMMISSION_PER_ITEM} style={{ width: 40, padding: "0 4px" }} /><span style={{ paddingRight: 12 }}>/ item</span></div></label><button className="primary-button" onClick={() => notify(t("Tetapan komisen disimpan"))}>{t("Simpan perubahan")}</button></article><article className="panel settings-panel"><h3>{t("Sambungan platform")}</h3><p>{t("Status sumber data pesanan.")}</p>{channels.map((channel) => { const issue = channel.name === "TikTok Shop"; return <button className={`integration-row ${issue ? "has-warning" : ""}`} key={channel.name} onClick={() => issue && notify(t("TikTok Shop: sambungkan semula token API."))}><ChannelLogo name={channel.name} color={channel.color} /><span><strong>{channel.name}</strong><small>{issue ? t("Perlu sambung semula") : t("Disambungkan")}</small></span><span className="integration-state"><i />{issue ? t("Semak") : t("Aktif")}</span></button>; })}</article></section>;
+  return <section className="settings-grid"><article className="panel settings-panel"><h3>{t("Tetapan komisen")}</h3><p>{t("Kadar ini digunakan untuk penyata baharu.")}</p><label>{t("Kadar komisen KretivWork")}<div style={{ width: 170 }}><span style={{ paddingLeft: 12 }}>RM</span><input defaultValue={COMMISSION_PER_ITEM} style={{ width: 40, padding: "0 4px" }} /><span style={{ paddingRight: 12 }}>/ item</span></div></label><button className="primary-button" onClick={() => notify(t("Tetapan komisen disimpan"))}>{t("Simpan perubahan")}</button></article><article className="panel settings-panel"><h3>{t("Sambungan platform")}</h3><p>{t("Status sumber data pesanan.")}</p>{channels.map((channel) => {
+    const status = sourceStatus?.[CHANNEL_TO_SOURCE_KEY[channel.name]] ?? null;
+    const issue = status === "error";
+    const label = status === null ? t("Memuatkan status…") : status === "real" ? t("Disambungkan") : status === "mock" ? t("Data ujian (mock)") : t("Ralat sambungan API");
+    const state = status === null ? "…" : status === "real" ? t("Aktif") : status === "mock" ? "Mock" : t("Semak");
+    return <button className={`integration-row ${issue ? "has-warning" : status === "mock" ? "is-mock" : ""}`} key={channel.name} onClick={() => issue && notify(t("Ralat sambungan API"))}><ChannelLogo name={channel.name} color={channel.color} /><span><strong>{channel.name}</strong><small>{label}</small></span><span className="integration-state"><i />{state}</span></button>;
+  })}</article></section>;
 }
 
 function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {

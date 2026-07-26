@@ -904,6 +904,9 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
 .integration-state i { width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; }
 .integration-row.has-warning .integration-state { color: var(--amber); }
 .integration-row.has-warning .integration-state i { background: var(--amber); }
+.integration-row.is-mock small { color: var(--muted); }
+.integration-row.is-mock .integration-state { color: var(--muted); }
+.integration-row.is-mock .integration-state i { background: var(--muted); }
 
 /* ==========================================================================
    Modals & drawers
