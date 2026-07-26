@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronDown,
   ChevronRight,
+  Download,
   LayoutDashboard,
   LoaderCircle,
   Menu,
@@ -130,6 +131,10 @@ const EN: Record<string, string> = {
   "Video pendek": "Short video", "Siaran langsung": "Livestream", "Post foto": "Photo post", "KOL & Affiliate": "KOL & Affiliate",
   "Hari disyorkan": "Recommended days", "Bajet (RM, pilihan)": "Budget (RM, optional)", "Nota": "Notes",
   "Batalkan kempen": "Cancel campaign", "Jadualkan kempen": "Schedule campaign",
+  "Kemas kini bank dan kod QR untuk pembayaran KretivCo.": "Update the bank details and QR code for KretivCo payments.",
+  "Nama bank": "Bank name", "Nama pemegang akaun": "Account holder name", "Nombor akaun": "Account number",
+  "Kod QR pembayaran": "Payment QR code", "Fail terlalu besar (maksimum 2MB)": "File too large (max 2MB)",
+  "Kaedah pembayaran disimpan": "Payment method settings saved",
 };
 
 const LangContext = createContext<{ lang: Lang; t: (s: string) => string }>({ lang: "bm", t: (s) => s });
@@ -168,6 +173,8 @@ const channels = [
 
 type PaymentStatus = "draft" | "approved" | "paid";
 type FinanceDocument = "invoice" | "receipt" | null;
+type PaymentSettings = { bankName: string; accountName: string; accountNumber: string; qrImageDataUrl: string | null };
+const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = { bankName: "Demo Bank", accountName: "KretivCo Sdn. Bhd.", accountNumber: "1234 5678 9012", qrImageDataUrl: null };
 
 const commissionWeek = {
   invoiceNo: "INV-KW-2026-029",
@@ -399,6 +406,7 @@ export default function Home() {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("draft");
   const [payMethod, setPayMethod] = useState<"bank" | "qr">("bank");
   const [statusHydrated, setStatusHydrated] = useState(false);
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(DEFAULT_PAYMENT_SETTINGS);
   const [financeDocument, setFinanceDocument] = useState<FinanceDocument>(null);
   const [toast, setToast] = useState("");
   const [lang, setLang] = useState<Lang>("bm");
@@ -448,6 +456,24 @@ export default function Home() {
       body: JSON.stringify({ approved, paid: paymentStatus === "paid", payMethod }),
     }).catch((err) => console.error("Failed to save commission status", err));
   }, [statusHydrated, approved, paymentStatus, payMethod]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/payment-settings")
+      .then((res) => res.json())
+      .then((data: PaymentSettings) => { if (!cancelled) setPaymentSettings(data); })
+      .catch((err) => console.error("Failed to load payment settings", err));
+    return () => { cancelled = true; };
+  }, []);
+
+  const savePaymentSettings = (next: PaymentSettings) => {
+    setPaymentSettings(next);
+    fetch("/api/payment-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(next),
+    }).catch((err) => console.error("Failed to save payment settings", err));
+  };
 
   const notify = (message: string) => {
     setToast(message);
@@ -678,13 +704,13 @@ export default function Home() {
           </>}
           {active === "finance" && <>
             <SectionTabs value={financeTab} onChange={setFinanceTab} tabs={[{ id: "studio", label: "Commission" }, { id: "statements", label: "Penyata" }, { id: "payments", label: "Pembayaran" }]} />
-            {financeTab === "studio" && <CommissionStudio paymentStatus={paymentStatus} payMethod={payMethod} setPayMethod={setPayMethod} onApprove={() => { setApproved(true); setPaymentStatus("approved"); notify(t("Invoice komisen diluluskan.")); }} onPay={() => { setApproved(true); setPaymentStatus("paid"); notify(t("Bayaran dummy ke KretivCo direkodkan.")); }} onOpenDocument={setFinanceDocument} />}
+            {financeTab === "studio" && <CommissionStudio paymentStatus={paymentStatus} payMethod={payMethod} setPayMethod={setPayMethod} paymentSettings={paymentSettings} onApprove={() => { setApproved(true); setPaymentStatus("approved"); notify(t("Invoice komisen diluluskan.")); }} onPay={() => { setApproved(true); setPaymentStatus("paid"); notify(t("Bayaran dummy ke KretivCo direkodkan.")); }} onOpenDocument={setFinanceDocument} />}
             {financeTab === "statements" && <StatementsView approved={approved} paid={paymentStatus === "paid"} onOpenWeek={(i) => setOpenStatementWeek(i)} />}
-            {financeTab === "payments" && <PaymentsView paymentStatus={paymentStatus} payMethod={payMethod} setPayMethod={setPayMethod} onPay={() => { setApproved(true); setPaymentStatus("paid"); notify(t("Bayaran dummy ke KretivCo direkodkan.")); }} onOpenReceipt={() => setFinanceDocument("receipt")} />}
+            {financeTab === "payments" && <PaymentsView paymentStatus={paymentStatus} payMethod={payMethod} setPayMethod={setPayMethod} paymentSettings={paymentSettings} onPay={() => { setApproved(true); setPaymentStatus("paid"); notify(t("Bayaran dummy ke KretivCo direkodkan.")); }} onOpenReceipt={() => setFinanceDocument("receipt")} />}
           </>}
           {active === "settings" && <>
             <SectionTabs value={settingsTab} onChange={setSettingsTab} tabs={[{ id: "system", label: "Sistem" }, { id: "team", label: "Pasukan" }]} />
-            {settingsTab === "system" && <SettingsView notify={notify} sourceStatus={sourceStatus} />}
+            {settingsTab === "system" && <SettingsView notify={notify} sourceStatus={sourceStatus} paymentSettings={paymentSettings} onSavePaymentSettings={savePaymentSettings} />}
             {settingsTab === "team" && <TeamView notify={notify} />}
           </>}
         </div>
@@ -731,7 +757,7 @@ function OrdersPanel({ orders, query, setQuery, status, setStatus, expanded, not
       <Dropdown className="filter-select" value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={["Semua status", "Selesai", "Diproses", "Refund"].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Tapis status")} />
       <Dropdown className="filter-select compact-select" value={channel} onChange={(v) => { setChannel(v); setPage(1); }} options={["Semua saluran", "BCL.my", "Shopee", "TikTok Shop"].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Tapis saluran")} />
       <Dropdown className="filter-select compact-select" value={sort} onChange={setSort} options={[{ value: "latest", label: t("Terkini") }, { value: "highest", label: t("Nilai tertinggi") }, { value: "lowest", label: t("Nilai terendah") }]} ariaLabel={t("Susun ikut")} />
-      <button className="export-button" onClick={() => notify(t("Fail CSV sedang disediakan"))}>{t("Export")}</button>
+      <button className="export-button" onClick={() => notify(t("Fail CSV sedang disediakan"))}><Download size={14} /><span>{t("Export")}</span></button>
     </div></div>
     <div className="table-wrap"><table><thead><tr><th>{t("PESANAN")}</th><th>{t("PELANGGAN")}</th><th>{t("SALURAN")}</th><th>{t("PRODUK")}</th><th>{t("JUMLAH")}</th><th>{t("STATUS")}</th><th /></tr></thead><tbody>{visibleOrders.map((order) => <tr key={order.id} tabIndex={0} onClick={() => onSelectOrder(order)} onKeyDown={(e) => { if (e.key === "Enter") onSelectOrder(order); }}><td><strong>{order.id}</strong><small>{order.time}</small></td><td><div className="customer"><span>{order.initials}</span><strong>{order.customer}</strong></div></td><td><span className={`channel-tag ${order.channel.split(".")[0].toLowerCase().replace(" shop", "")}`}>{order.channel}</span></td><td><div className="product-cell"><span className="product-thumb" style={{ background: order.productTone }}>{order.productCode}</span><span><strong>{order.item}</strong><small>Chef Ammar™ Arabic Spices</small></span></div></td><td><strong>{currency(order.amount)}</strong></td><td><StatusBadge status={order.status} /></td><td><button className="row-menu" aria-label={`${t("Buka")} ${order.id}`} onClick={(e) => { e.stopPropagation(); onSelectOrder(order); }}><ChevronRight size={17} /></button></td></tr>)}</tbody></table>{sortedOrders.length === 0 && <div className="empty-state"><Search size={28} /><strong>{t("Tiada pesanan")}</strong><span>{t("Ubah carian atau filter.")}</span><button onClick={() => { setQuery(""); setStatus("Semua status"); setChannel("Semua saluran"); }}>{t("Kosongkan filter")}</button></div>}</div>
     {sortedOrders.length > 0 && <div className="table-pagination"><span>{t("Menunjukkan")} {(page - 1) * perPage + 1}–{Math.min(page * perPage, sortedOrders.length)} {t("daripada")} {sortedOrders.length}</span><div><button disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label={t("Halaman sebelumnya")}><ChevronLeft size={15} /></button><b>{page} / {totalPages}</b><button disabled={page === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} aria-label={t("Halaman seterusnya")}><ChevronRight size={15} /></button></div></div>}
@@ -914,9 +940,9 @@ function AttributionView({ onOpenOrders }: { onOpenOrders: (channel: string) => 
   </section>;
 }
 
-function PaymentMethodBox({ payMethod, setPayMethod, reference, amount }: { payMethod: "bank" | "qr"; setPayMethod: (v: "bank" | "qr") => void; reference: string; amount: number }) {
+function PaymentMethodBox({ payMethod, setPayMethod, reference, amount, settings }: { payMethod: "bank" | "qr"; setPayMethod: (v: "bank" | "qr") => void; reference: string; amount: number; settings: PaymentSettings }) {
   const { t } = useLang();
-  const qrValue = `KretivCo Sdn. Bhd. | ${currency(amount)} | REF:${reference}`;
+  const qrValue = `${settings.accountName} | ${currency(amount)} | REF:${reference}`;
   return <>
     <div className="payment-method-toggle" role="tablist">
       <button role="tab" aria-selected={payMethod === "bank"} className={payMethod === "bank" ? "active" : ""} onClick={() => setPayMethod("bank")}>{t("Bank Transfer")}</button>
@@ -925,12 +951,14 @@ function PaymentMethodBox({ payMethod, setPayMethod, reference, amount }: { payM
     {payMethod === "bank" ? (
       <div className="bank-box">
         <small>Beneficiary</small>
-        <strong>KretivCo Sdn. Bhd.</strong>
-        <span>{commissionWeek.bank} · masked account · {reference}</span>
+        <strong>{settings.accountName}</strong>
+        <span>{settings.bankName} · {settings.accountNumber} · {reference}</span>
       </div>
     ) : (
       <div className="qr-box">
-        <div className="qr-code-wrap"><QRCodeSVG value={qrValue} size={124} bgColor="transparent" fgColor="#2b2118" level="M" /></div>
+        <div className="qr-code-wrap">
+          {settings.qrImageDataUrl ? <img src={settings.qrImageDataUrl} alt="Payment QR code" width={124} height={124} /> : <QRCodeSVG value={qrValue} size={124} bgColor="transparent" fgColor="#2b2118" level="M" />}
+        </div>
         <strong>{currency(amount)}</strong>
         <span>{t("Imbas untuk bayar KretivCo")}</span>
       </div>
@@ -938,7 +966,7 @@ function PaymentMethodBox({ payMethod, setPayMethod, reference, amount }: { payM
   </>;
 }
 
-function CommissionStudio({ paymentStatus, payMethod, setPayMethod, onApprove, onPay, onOpenDocument }: { paymentStatus: PaymentStatus; payMethod: "bank" | "qr"; setPayMethod: (v: "bank" | "qr") => void; onApprove: () => void; onPay: () => void; onOpenDocument: (type: FinanceDocument) => void }) {
+function CommissionStudio({ paymentStatus, payMethod, setPayMethod, paymentSettings, onApprove, onPay, onOpenDocument }: { paymentStatus: PaymentStatus; payMethod: "bank" | "qr"; setPayMethod: (v: "bank" | "qr") => void; paymentSettings: PaymentSettings; onApprove: () => void; onPay: () => void; onOpenDocument: (type: FinanceDocument) => void }) {
   const { t } = useLang();
   const paid = paymentStatus === "paid";
   const approved = paymentStatus === "approved" || paid;
@@ -983,7 +1011,7 @@ function CommissionStudio({ paymentStatus, payMethod, setPayMethod, onApprove, o
       </article>
       <article className="panel invoice-card">
         <div className="panel-heading"><div><h3>{t("Payment ke KretivCo")}</h3><p>{t("Rekod bayaran dummy untuk test flow")}</p></div><span className={paid ? "approved-pill" : "review-pill"}>{paid ? "Paid" : "Unpaid"}</span></div>
-        <PaymentMethodBox payMethod={payMethod} setPayMethod={setPayMethod} reference={commissionWeek.reference} amount={commissionWeek.commission} />
+        <PaymentMethodBox payMethod={payMethod} setPayMethod={setPayMethod} reference={commissionWeek.reference} amount={commissionWeek.commission} settings={paymentSettings} />
         <button className="full-button" disabled={paid} onClick={onPay}>{paid ? t("Bayaran telah direkod") : "Pay KretivCo (dummy)"}</button>
       </article>
     </div>
@@ -999,10 +1027,10 @@ function StatementsView({ approved, paid, onOpenWeek }: { approved: boolean; pai
   return <section className="panel statement-list"><div className="panel-heading"><div><h3>{t("Rekod penyata")}</h3><p>{t("Komisen mingguan KretivWork")}</p></div></div>{weeks.map((week, i) => <button className="statement-item" key={week.period} onClick={() => onOpenWeek(i)}><span className="statement-index">W{29 - i}</span><span><strong>{week.period}</strong><small>{currency(week.sales)} {t("jualan selesai")}</small></span><span><small>{t("Komisen")}</small><strong>{currency(week.commission)}</strong></span><span className={week.status === "Dibayar" || week.status === "Diluluskan" ? "approved-pill" : "review-pill"}>{t(week.status)}</span><span className="row-action">{t("Buka")}</span></button>)}</section>;
 }
 
-function PaymentsView({ paymentStatus, payMethod, setPayMethod, onPay, onOpenReceipt }: { paymentStatus: PaymentStatus; payMethod: "bank" | "qr"; setPayMethod: (v: "bank" | "qr") => void; onPay: () => void; onOpenReceipt: () => void }) {
+function PaymentsView({ paymentStatus, payMethod, setPayMethod, paymentSettings, onPay, onOpenReceipt }: { paymentStatus: PaymentStatus; payMethod: "bank" | "qr"; setPayMethod: (v: "bank" | "qr") => void; paymentSettings: PaymentSettings; onPay: () => void; onOpenReceipt: () => void }) {
   const { t } = useLang();
   const paid = paymentStatus === "paid";
-  return <section className="view-stack"><div className="metrics-grid payments-metrics"><article className="metric metric-featured"><p>{t("Jumlah telah dibayar")}</p><h2>{paid ? "RM11,732.09" : "RM8,920.16"}</h2><small>{paid ? t("4 pembayaran termasuk minggu ini") : t("3 pembayaran terdahulu")}</small></article><article className="metric"><p>{paid ? t("Bayaran minggu ini") : t("Menunggu bayaran")}</p><h2>{currency(commissionWeek.commission)}</h2><small>{commissionWeek.invoiceNo}</small></article><article className="metric"><p>{t("Rujukan")}</p><h2>{paid ? "Paid" : "22 Jul"}</h2><small>{paid ? commissionWeek.receiptNo : t("Tarikh bayaran seterusnya")}</small></article></div><article className="panel payment-flow-card"><div><h3>{t("Aliran pembayaran")}</h3><p>{t("Bayaran dibuat selepas invoice komisen diluluskan oleh Chef Ammar.")}</p></div><div className="payment-steps"><span className="complete"><b>1</b>{t("Jualan selesai")}</span><i /><span className="complete"><b>2</b>{t("Invoice dijana")}</span><i /><span className="complete"><b>3</b>{t("Kelulusan Chef")}</span><i /><span className={paid ? "complete" : "active"}><b>4</b>{paid ? t("Resit tersedia") : t("Bayaran")}</span></div><PaymentMethodBox payMethod={payMethod} setPayMethod={setPayMethod} reference={commissionWeek.reference} amount={commissionWeek.commission} /><div className="payment-actions"><button className="secondary-button" onClick={onOpenReceipt} disabled={!paid}>{t("Preview resit")}</button><button className="primary-button" onClick={onPay} disabled={paid}>{paid ? t("Sudah dibayar") : "Pay KretivCo (dummy)"}</button></div></article></section>;
+  return <section className="view-stack"><div className="metrics-grid payments-metrics"><article className="metric metric-featured"><p>{t("Jumlah telah dibayar")}</p><h2>{paid ? "RM11,732.09" : "RM8,920.16"}</h2><small>{paid ? t("4 pembayaran termasuk minggu ini") : t("3 pembayaran terdahulu")}</small></article><article className="metric"><p>{paid ? t("Bayaran minggu ini") : t("Menunggu bayaran")}</p><h2>{currency(commissionWeek.commission)}</h2><small>{commissionWeek.invoiceNo}</small></article><article className="metric"><p>{t("Rujukan")}</p><h2>{paid ? "Paid" : "22 Jul"}</h2><small>{paid ? commissionWeek.receiptNo : t("Tarikh bayaran seterusnya")}</small></article></div><article className="panel payment-flow-card"><div><h3>{t("Aliran pembayaran")}</h3><p>{t("Bayaran dibuat selepas invoice komisen diluluskan oleh Chef Ammar.")}</p></div><div className="payment-steps"><span className="complete"><b>1</b>{t("Jualan selesai")}</span><i /><span className="complete"><b>2</b>{t("Invoice dijana")}</span><i /><span className="complete"><b>3</b>{t("Kelulusan Chef")}</span><i /><span className={paid ? "complete" : "active"}><b>4</b>{paid ? t("Resit tersedia") : t("Bayaran")}</span></div><PaymentMethodBox payMethod={payMethod} setPayMethod={setPayMethod} reference={commissionWeek.reference} amount={commissionWeek.commission} settings={paymentSettings} /><div className="payment-actions"><button className="secondary-button" onClick={onOpenReceipt} disabled={!paid}>{t("Preview resit")}</button><button className="primary-button" onClick={onPay} disabled={paid}>{paid ? t("Sudah dibayar") : "Pay KretivCo (dummy)"}</button></div></article></section>;
 }
 
 function TeamView({ notify }: { notify: (v: string) => void }) {
@@ -1012,15 +1040,40 @@ function TeamView({ notify }: { notify: (v: string) => void }) {
 
 const CHANNEL_TO_SOURCE_KEY: Record<string, DataSourceKey> = { "BCL.my": "bclmy", Shopee: "shopee", "TikTok Shop": "tiktok" };
 
-function SettingsView({ notify, sourceStatus }: { notify: (v: string) => void; sourceStatus: Record<DataSourceKey, SourceStatus> | null }) {
+function SettingsView({ notify, sourceStatus, paymentSettings, onSavePaymentSettings }: { notify: (v: string) => void; sourceStatus: Record<DataSourceKey, SourceStatus> | null; paymentSettings: PaymentSettings; onSavePaymentSettings: (next: PaymentSettings) => void }) {
   const { t } = useLang();
+  const [bankName, setBankName] = useState(paymentSettings.bankName);
+  const [accountName, setAccountName] = useState(paymentSettings.accountName);
+  const [accountNumber, setAccountNumber] = useState(paymentSettings.accountNumber);
+  const [qrImageDataUrl, setQrImageDataUrl] = useState<string | null>(paymentSettings.qrImageDataUrl);
+
+  useEffect(() => {
+    setBankName(paymentSettings.bankName);
+    setAccountName(paymentSettings.accountName);
+    setAccountNumber(paymentSettings.accountNumber);
+    setQrImageDataUrl(paymentSettings.qrImageDataUrl);
+  }, [paymentSettings]);
+
+  const onQrFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      notify(t("Fail terlalu besar (maksimum 2MB)"));
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setQrImageDataUrl(typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(file);
+  };
+
   return <section className="settings-grid"><article className="panel settings-panel"><h3>{t("Tetapan komisen")}</h3><p>{t("Kadar ini digunakan untuk penyata baharu.")}</p><label>{t("Kadar komisen KretivWork")}<div style={{ width: 170 }}><span style={{ paddingLeft: 12 }}>RM</span><input defaultValue={COMMISSION_PER_ITEM} style={{ width: 40, padding: "0 4px" }} /><span style={{ paddingRight: 12 }}>/ item</span></div></label><button className="primary-button" onClick={() => notify(t("Tetapan komisen disimpan"))}>{t("Simpan perubahan")}</button></article><article className="panel settings-panel"><h3>{t("Sambungan platform")}</h3><p>{t("Status sumber data pesanan.")}</p>{channels.map((channel) => {
     const status = sourceStatus?.[CHANNEL_TO_SOURCE_KEY[channel.name]] ?? null;
     const issue = status === "error";
     const label = status === null ? t("Memuatkan status…") : status === "real" ? t("Disambungkan") : status === "mock" ? t("Data ujian (mock)") : t("Ralat sambungan API");
     const state = status === null ? "…" : status === "real" ? t("Aktif") : status === "mock" ? "Mock" : t("Semak");
     return <button className={`integration-row ${issue ? "has-warning" : status === "mock" ? "is-mock" : ""}`} key={channel.name} onClick={() => issue && notify(t("Ralat sambungan API"))}><ChannelLogo name={channel.name} color={channel.color} /><span><strong>{channel.name}</strong><small>{label}</small></span><span className="integration-state"><i />{state}</span></button>;
-  })}</article></section>;
+  })}</article><article className="panel settings-panel"><h3>{t("Kaedah pembayaran")}</h3><p>{t("Kemas kini bank dan kod QR untuk pembayaran KretivCo.")}</p><label className="settings-field"><small>{t("Nama bank")}</small><input className="settings-input" value={bankName} onChange={(e) => setBankName(e.target.value)} /></label><label className="settings-field"><small>{t("Nama pemegang akaun")}</small><input className="settings-input" value={accountName} onChange={(e) => setAccountName(e.target.value)} /></label><label className="settings-field"><small>{t("Nombor akaun")}</small><input className="settings-input" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} /></label><label className="settings-field"><small>{t("Kod QR pembayaran")}</small><div className="qr-upload-row">{qrImageDataUrl ? <img className="qr-upload-preview" src={qrImageDataUrl} alt="" /> : null}<input type="file" accept="image/*" onChange={onQrFileChange} /></div></label><button className="primary-button" onClick={() => { onSavePaymentSettings({ bankName, accountName, accountNumber, qrImageDataUrl }); notify(t("Kaedah pembayaran disimpan")); }}>{t("Simpan perubahan")}</button></article></section>;
 }
 
 function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {

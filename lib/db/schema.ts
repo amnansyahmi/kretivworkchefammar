@@ -24,3 +24,16 @@ export const campaigns = pgTable("campaigns", {
   notes: text("notes").notNull().default(""),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// Bank details and QR code shown in the "Payment ke KretivCo" card,
+// editable by the KretivCo team from Tetapan > Kaedah pembayaran.
+// qrImageDataUrl is a base64 data URL of an uploaded QR image; null
+// falls back to an auto-generated QR code.
+export const paymentSettings = pgTable("payment_settings", {
+  key: text("key").primaryKey().default("current"),
+  bankName: text("bank_name").notNull().default("Demo Bank"),
+  accountName: text("account_name").notNull().default("KretivCo Sdn. Bhd."),
+  accountNumber: text("account_number").notNull().default("1234 5678 9012"),
+  qrImageDataUrl: text("qr_image_data_url"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
