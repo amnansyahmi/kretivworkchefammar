@@ -124,6 +124,7 @@ input, select { color: var(--ink); }
   box-shadow: var(--shadow-xs), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .primary-button:hover { background: linear-gradient(180deg, #3a352f, var(--primary-hover)); border-color: var(--primary-hover); }
+a.primary-button, a.secondary-button { text-decoration: none; }
 .primary-button:disabled, .full-button:disabled, .secondary-button:disabled { opacity: 0.45; cursor: not-allowed; }
 .secondary-button, .export-button {
   border: 1px solid var(--line);
@@ -648,6 +649,35 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
 .status-diproses > span { background: var(--amber); }
 .status-refund { background: var(--danger-soft); color: var(--danger); }
 .status-refund > span { background: var(--danger); }
+.status-ship-pending { background: var(--surface-alt); color: var(--muted); }
+.status-ship-pending > span { background: var(--muted); }
+.status-ship-transit { background: var(--blue-soft); color: var(--blue); }
+.status-ship-transit > span { background: var(--blue); }
+.status-ship-out { background: var(--amber-soft); color: var(--amber); }
+.status-ship-out > span { background: var(--amber); }
+.status-ship-delivered { background: var(--success-soft); color: var(--success-hover); }
+.status-ship-delivered > span { background: var(--success); }
+.status-ship-failed { background: var(--danger-soft); color: var(--danger); }
+.status-ship-failed > span { background: var(--danger); }
+
+/* --- Logistics --- */
+.tracking-no { font-family: var(--font-mono); letter-spacing: -0.01em; }
+.courier-cell { display: flex; align-items: center; gap: 9px; }
+.courier-thumb {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 30px; height: 30px; border-radius: var(--radius-xs);
+  color: white; font-size: 9px; font-weight: 750; letter-spacing: 0.01em;
+}
+.courier-thumb.large { width: 42px; height: 42px; font-size: 12px; border-radius: var(--radius-sm); }
+.courier-row { display: grid; grid-template-columns: 30px 1fr 76px; gap: 11px; align-items: center; border-top: 1px solid var(--line); padding: 13px 0; }
+.courier-row-main { min-width: 0; }
+.courier-row-main strong { display: block; font-size: 11px; color: var(--ink); }
+.courier-row-main small { display: block; font-size: 9px; color: var(--muted); margin-top: 3px; }
+.courier-bar { display: block; height: 4px; border-radius: 99px; background: var(--surface-alt); margin-top: 7px; overflow: hidden; }
+.courier-bar b { display: block; height: 100%; border-radius: 99px; }
+.courier-row-rate { text-align: right; }
+.courier-row-rate strong { display: block; font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
+.courier-row-rate small { display: block; font-size: 8px; color: var(--muted); margin-top: 2px; }
 
 .product-cell { display: flex; align-items: center; gap: 9px; min-width: 225px; }
 .product-thumb { width: 32px; height: 38px; border-radius: 6px; color: white; display: grid; place-items: center; font-size: 8px; font-weight: 800; letter-spacing: 0.03em; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); flex: 0 0 auto; }
@@ -996,6 +1026,8 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
 .order-timeline i { grid-row: 1 / 3; width: 27px; height: 27px; border: 1px solid var(--line-strong); border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 9px; color: var(--muted); background: var(--surface-alt); z-index: 1; }
 .order-timeline .complete i { background: var(--success); border-color: var(--success); color: white; }
 .order-timeline .current i { border-color: var(--amber); background: var(--amber-soft); color: var(--amber); }
+.order-timeline .failed i { background: var(--danger); border-color: var(--danger); color: white; }
+.order-timeline .failed b { color: var(--danger); }
 .order-timeline b { font-size: 11px; color: var(--ink); }
 .order-timeline small { display: block; font-size: 9px; color: var(--muted); margin-top: 2px; }
 
@@ -1141,7 +1173,7 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
   .mobile-bottom-nav {
     position: fixed;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     left: 0;
     right: 0;
     bottom: 0;

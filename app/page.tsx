@@ -14,16 +14,20 @@ import {
   Settings,
   ShoppingBag,
   Store,
+  Truck,
   WalletCards,
   X,
 } from "lucide-react";
 import { SiShopee, SiTiktok } from "react-icons/si";
 import { QRCodeSVG } from "qrcode.react";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { DataSourceKey } from "../lib/config";
+import type { CourierKey, DataSourceKey } from "../lib/config";
 import { mockOrders } from "../lib/sources/mock-orders";
 import type { Order } from "../lib/sources/types";
 import type { SourceStatus } from "../lib/sources";
+import { mockShipments } from "../lib/logistics/mock-shipments";
+import { SHIPMENT_STAGES, type Shipment } from "../lib/logistics/types";
+import type { CourierSourceStatus } from "../lib/logistics";
 import { StatementPdfDocument, InvoicePdfDocument } from "../lib/pdf/documents";
 import { downloadPdf } from "../lib/pdf/download";
 
@@ -99,6 +103,33 @@ const EN: Record<string, string> = {
   "Jemput pengguna": "Invite user", "Aktif": "Active",
   "Tetapan komisen": "Commission settings", "Kadar ini digunakan untuk penyata baharu.": "This rate is used for new statements.",
   "Kadar komisen KretivWork": "KretivWork commission rate", "Simpan perubahan": "Save changes", "Tetapan komisen disimpan": "Commission settings saved",
+  "Logistik": "Logistics", "Penghantaran": "Shipments", "Kurier": "Couriers",
+  "Rekod penghantaran": "Shipping records", "penghantaran ditemui": "shipments found",
+  "Dalam transit": "In transit", "Menunggu pickup": "Awaiting pickup", "Sedang dihantar": "Out for delivery",
+  "Dihantar": "Delivered", "Gagal dihantar": "Delivery failed",
+  "Bungkusan sedang bergerak": "Parcels on the move", "Belum diambil kurier": "Not yet collected",
+  "Selesai dihantar bulan ini": "Delivered this month", "Jumlah kos penghantaran": "Total shipping cost",
+  "penghantaran minggu ini": "shipments this week",
+  "Semua kurier": "All couriers", "Semua status penghantaran": "All shipment statuses",
+  "TRACKING": "TRACKING", "PENERIMA": "RECIPIENT", "KURIER": "COURIER", "DESTINASI": "DESTINATION", "KOS": "COST",
+  "Tiada penghantaran": "No shipments", "Ubah carian atau filter kurier.": "Change the search or courier filter.",
+  "Prestasi kurier": "Courier performance",
+  "Pecahan penghantaran dan kadar berjaya mengikut kurier.": "Shipment volume and success rate by courier.",
+  "penghantaran": "shipments", "Purata kos": "Average cost",
+  "selesai": "settled", "belum selesai": "none settled",
+  "Sambungan kurier": "Courier connections", "Status API penghantaran.": "Shipping API status.",
+  "BUTIRAN PENGHANTARAN": "SHIPMENT DETAILS", "Butiran penghantaran": "Shipment details",
+  "Penerima": "Recipient", "Poskod": "Postcode", "Berat": "Weight", "Servis": "Service",
+  "Anggaran sampai": "Estimated arrival", "Ditempah": "Booked", "Jejak penghantaran": "Tracking history",
+  "Kos penghantaran": "Shipping cost", "Salin no. tracking": "Copy tracking no.",
+  "Nombor tracking disalin": "Tracking number copied", "Jejak di laman kurier": "Track on courier site",
+  "Destinasi": "Destination",
+  "Standard Domestik": "Standard Domestic", "Pos Laju Next Day": "Pos Laju Next Day", "DHL Domestik": "DHL Domestic",
+  "Pesanan dibuat": "Order created", "Bungkusan diambil kurier": "Parcel collected by courier",
+  "Tiba di hab penyusunan": "Arrived at sorting hub", "Dalam perjalanan ke penerima": "Out for delivery",
+  "Berjaya dihantar — diterima oleh penerima": "Delivered — received by recipient",
+  "Cubaan penghantaran gagal — penerima tiada": "Delivery attempt failed — recipient unavailable",
+  "Dipulangkan ke penghantar": "Returned to sender",
   "Sambungan platform": "Platform connections", "Status sumber data pesanan.": "Order data source status.",
   "Perlu sambung semula": "Needs reconnect", "Disambungkan": "Connected", "Semak": "Review",
   "Data ujian (mock)": "Test data (mock)", "Ralat sambungan API": "API connection error", "Memuatkan status…": "Loading status…",
@@ -232,9 +263,12 @@ const attributionSources = [
 const nav = [
   { id: "overview", label: "Ringkasan", icon: LayoutDashboard },
   { id: "sales", label: "Jualan", icon: ShoppingBag, count: 12 },
+  { id: "logistics", label: "Logistik", icon: Truck, count: 2 },
   { id: "finance", label: "Kewangan", icon: WalletCards, count: 1 },
   { id: "settings", label: "Tetapan", icon: Settings },
 ];
+
+const COURIER_LABELS: Record<CourierKey, string> = { easyparcel: "EasyParcel", jnt: "J&T Express (direct)" };
 
 function currency(value: number) {
   return new Intl.NumberFormat("ms-MY", { style: "currency", currency: "MYR" }).format(value);
@@ -389,6 +423,7 @@ const activityFeed = [
 export default function Home() {
   const [active, setActive] = useState("overview");
   const [salesTab, setSalesTab] = useState("orders");
+  const [logisticsTab, setLogisticsTab] = useState("shipments");
   const [financeTab, setFinanceTab] = useState("studio");
   const [settingsTab, setSettingsTab] = useState("system");
   const [mobileNav, setMobileNav] = useState(false);
@@ -413,6 +448,22 @@ export default function Home() {
   const t = (s: string) => (lang === "en" ? EN[s] ?? s : s);
   const [liveOrders, setLiveOrders] = useState<Order[] | null>(null);
   const [sourceStatus, setSourceStatus] = useState<Record<DataSourceKey, SourceStatus> | null>(null);
+  const [liveShipments, setLiveShipments] = useState<Shipment[] | null>(null);
+  const [courierStatus, setCourierStatus] = useState<Record<CourierKey, CourierSourceStatus> | null>(null);
+  const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/shipments")
+      .then((res) => res.json())
+      .then((data: { shipments: Shipment[]; couriers: Record<CourierKey, CourierSourceStatus> }) => {
+        if (cancelled) return;
+        setLiveShipments(data.shipments);
+        setCourierStatus(data.couriers);
+      })
+      .catch((err) => console.error("Failed to load shipments", err));
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -428,6 +479,7 @@ export default function Home() {
   }, []);
 
   const orderList = liveOrders ?? orders;
+  const shipmentList = liveShipments ?? mockShipments;
   const filteredOrders = useMemo(() => orderList.filter((order) => {
     const matchesQuery = `${order.id} ${order.customer} ${order.item} ${order.channel} ${order.payment}`.toLowerCase().includes(query.toLowerCase());
     return matchesQuery && (status === "Semua status" || order.status === status);
@@ -702,6 +754,11 @@ export default function Home() {
             {salesTab === "channels" && <ChannelsView notify={notify} />}
             {salesTab === "sources" && <AttributionView onOpenOrders={openOrdersFor} />}
           </>}
+          {active === "logistics" && <>
+            <SectionTabs value={logisticsTab} onChange={setLogisticsTab} tabs={[{ id: "shipments", label: "Penghantaran" }, { id: "couriers", label: "Kurier" }]} />
+            {logisticsTab === "shipments" && <ShipmentsPanel shipments={shipmentList} notify={notify} onSelectShipment={setSelectedShipment} />}
+            {logisticsTab === "couriers" && <CouriersView shipments={shipmentList} courierStatus={courierStatus} notify={notify} />}
+          </>}
           {active === "finance" && <>
             <SectionTabs value={financeTab} onChange={setFinanceTab} tabs={[{ id: "studio", label: "Commission" }, { id: "statements", label: "Penyata" }, { id: "payments", label: "Pembayaran" }]} />
             {financeTab === "studio" && <CommissionStudio paymentStatus={paymentStatus} payMethod={payMethod} setPayMethod={setPayMethod} paymentSettings={paymentSettings} onApprove={() => { setApproved(true); setPaymentStatus("approved"); notify(t("Invoice komisen diluluskan.")); }} onPay={() => { setApproved(true); setPaymentStatus("paid"); notify(t("Bayaran dummy ke KretivCo direkodkan.")); }} onOpenDocument={setFinanceDocument} />}
@@ -723,6 +780,7 @@ export default function Home() {
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); notify(t("Fail berjaya diimport dan sedang diproses")); }} />}
       {openStatementWeek !== null && <StatementDrawer weekIndex={openStatementWeek} role={role} approved={approved} paid={paymentStatus === "paid"} onClose={() => setOpenStatementWeek(null)} onApprove={() => { setApproved(true); setPaymentStatus("approved"); setOpenStatementWeek(null); notify(t("Penyata telah diluluskan")); }} />}
       {selectedOrder && <OrderDrawer order={selectedOrder} onClose={() => setSelectedOrder(null)} notify={notify} />}
+      {selectedShipment && <ShipmentDrawer shipment={selectedShipment} onClose={() => setSelectedShipment(null)} notify={notify} />}
       {financeDocument === "invoice" && <FinanceDocumentDrawer type="invoice" paymentStatus={paymentStatus} onClose={() => setFinanceDocument(null)} onPay={() => { setApproved(true); setPaymentStatus("paid"); notify(t("Bayaran dummy ke KretivCo direkodkan.")); }} />}
       {financeDocument === "receipt" && <FinanceDocumentDrawer type="receipt" paymentStatus={paymentStatus} onClose={() => setFinanceDocument(null)} onPay={() => { setApproved(true); setPaymentStatus("paid"); notify(t("Bayaran dummy ke KretivCo direkodkan.")); }} />}
       {toast && <div className="toast"><span className="toast-dot" />{toast}</div>}
@@ -1039,6 +1097,182 @@ function TeamView({ notify }: { notify: (v: string) => void }) {
 }
 
 const CHANNEL_TO_SOURCE_KEY: Record<string, DataSourceKey> = { "BCL.my": "bclmy", Shopee: "shopee", "TikTok Shop": "tiktok" };
+
+const SHIPMENT_STATUS_CLASS: Record<Shipment["status"], string> = {
+  "Menunggu pickup": "ship-pending",
+  "Dalam transit": "ship-transit",
+  "Sedang dihantar": "ship-out",
+  "Dihantar": "ship-delivered",
+  "Gagal dihantar": "ship-failed",
+};
+
+const COURIER_TONES: Record<Shipment["courier"], { short: string; color: string }> = {
+  "J&T Express": { short: "JT", color: "#dc2626" },
+  "Pos Laju": { short: "PL", color: "#d97706" },
+  "Ninja Van": { short: "NV", color: "#7c3aed" },
+  "DHL eCommerce": { short: "DHL", color: "#ca8a04" },
+};
+
+// Courier tracking pages. Where the query param isn't stable we fall back to
+// the courier's tracker landing page — the drawer's copy button covers the
+// rest, so the user is never stranded.
+const COURIER_TRACK_URLS: Record<Shipment["courier"], (no: string) => string> = {
+  "J&T Express": () => "https://www.jtexpress.my/tracking",
+  "Pos Laju": (no) => `https://track.pos.com.my/postal-services/quick-access/track-trace?trackingNo=${no}`,
+  "Ninja Van": (no) => `https://www.ninjavan.co/en-my/tracking?id=${no}`,
+  "DHL eCommerce": (no) => `https://ecommerceportal.dhl.com/track/?ref=${no}`,
+};
+
+function ShipmentStatusBadge({ status }: { status: Shipment["status"] }) {
+  const { t } = useLang();
+  return <span className={`status status-${SHIPMENT_STATUS_CLASS[status]}`}><span />{t(status)}</span>;
+}
+
+function ShipmentsPanel({ shipments, notify, onSelectShipment }: { shipments: Shipment[]; notify: (v: string) => void; onSelectShipment: (shipment: Shipment) => void }) {
+  const { t } = useLang();
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("Semua status penghantaran");
+  const [courier, setCourier] = useState("Semua kurier");
+  const [page, setPage] = useState(1);
+  const perPage = 5;
+
+  const filtered = useMemo(() => shipments.filter((shipment) => {
+    const haystack = `${shipment.trackingNo} ${shipment.orderId} ${shipment.recipient} ${shipment.courier} ${shipment.destination} ${shipment.postcode}`.toLowerCase();
+    return haystack.includes(query.toLowerCase())
+      && (status === "Semua status penghantaran" || shipment.status === status)
+      && (courier === "Semua kurier" || shipment.courier === courier);
+  }), [shipments, query, status, courier]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const visible = filtered.slice((page - 1) * perPage, page * perPage);
+
+  const inTransit = shipments.filter((s) => s.status === "Dalam transit" || s.status === "Sedang dihantar").length;
+  const pending = shipments.filter((s) => s.status === "Menunggu pickup").length;
+  const delivered = shipments.filter((s) => s.status === "Dihantar").length;
+  const totalCost = shipments.reduce((sum, s) => sum + s.cost, 0);
+
+  return <section className="view-stack">
+    <div className="metrics-grid">
+      <article className="metric metric-featured"><p>{t("Dalam transit")}</p><h2>{inTransit}</h2><small>{t("Bungkusan sedang bergerak")}</small></article>
+      <article className="metric"><p>{t("Menunggu pickup")}</p><h2>{pending}</h2><small>{t("Belum diambil kurier")}</small></article>
+      <article className="metric"><p>{t("Dihantar")}</p><h2>{delivered}</h2><small>{t("Selesai dihantar bulan ini")}</small></article>
+      <article className="metric"><p>{t("Jumlah kos penghantaran")}</p><h2>{currency(totalCost)}</h2><small>{shipments.length} {t("penghantaran minggu ini")}</small></article>
+    </div>
+
+    <section className="panel orders-panel orders-expanded">
+      <div className="panel-heading orders-heading"><div><h3>{t("Rekod penghantaran")}</h3><p>{filtered.length} {t("penghantaran ditemui")}</p></div><div className="table-actions">
+        <label className="search-box"><Search size={16} /><input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder={t("Cari...")} /></label>
+        <Dropdown className="filter-select" value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={["Semua status penghantaran", ...SHIPMENT_STAGES, "Gagal dihantar"].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Tapis status")} />
+        <Dropdown className="filter-select compact-select" value={courier} onChange={(v) => { setCourier(v); setPage(1); }} options={["Semua kurier", ...Object.keys(COURIER_TONES)].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Kurier")} />
+        <button className="export-button" onClick={() => notify(t("Fail CSV sedang disediakan"))}><Download size={14} /><span>{t("Export")}</span></button>
+      </div></div>
+      <div className="table-wrap"><table><thead><tr><th>{t("TRACKING")}</th><th>{t("PESANAN")}</th><th>{t("PENERIMA")}</th><th>{t("KURIER")}</th><th>{t("DESTINASI")}</th><th>{t("KOS")}</th><th>{t("STATUS")}</th><th /></tr></thead><tbody>{visible.map((shipment) => <tr key={shipment.trackingNo} tabIndex={0} onClick={() => onSelectShipment(shipment)} onKeyDown={(e) => { if (e.key === "Enter") onSelectShipment(shipment); }}>
+        <td><strong className="tracking-no">{shipment.trackingNo}</strong><small>{shipment.bookedAt}</small></td>
+        <td><strong>{shipment.orderId}</strong></td>
+        <td><div className="customer"><span>{shipment.initials}</span><strong>{shipment.recipient}</strong></div></td>
+        <td><div className="courier-cell"><span className="courier-thumb" style={{ background: COURIER_TONES[shipment.courier].color }}>{COURIER_TONES[shipment.courier].short}</span><span><strong>{shipment.courier}</strong><small>{t(shipment.service)}</small></span></div></td>
+        <td><strong>{shipment.destination}</strong><small>{shipment.postcode}</small></td>
+        <td><strong>{currency(shipment.cost)}</strong><small>{shipment.weightKg} kg</small></td>
+        <td><ShipmentStatusBadge status={shipment.status} /></td>
+        <td><button className="row-menu" aria-label={`${t("Buka")} ${shipment.trackingNo}`} onClick={(e) => { e.stopPropagation(); onSelectShipment(shipment); }}><ChevronRight size={17} /></button></td>
+      </tr>)}</tbody></table>{filtered.length === 0 && <div className="empty-state"><Truck size={28} /><strong>{t("Tiada penghantaran")}</strong><span>{t("Ubah carian atau filter kurier.")}</span><button onClick={() => { setQuery(""); setStatus("Semua status penghantaran"); setCourier("Semua kurier"); }}>{t("Kosongkan filter")}</button></div>}</div>
+      {filtered.length > 0 && <div className="table-pagination"><span>{t("Menunjukkan")} {(page - 1) * perPage + 1}–{Math.min(page * perPage, filtered.length)} {t("daripada")} {filtered.length}</span><div><button disabled={page === 1} onClick={() => setPage((v) => Math.max(1, v - 1))} aria-label={t("Halaman sebelumnya")}><ChevronLeft size={15} /></button><b>{page} / {totalPages}</b><button disabled={page === totalPages} onClick={() => setPage((v) => Math.min(totalPages, v + 1))} aria-label={t("Halaman seterusnya")}><ChevronRight size={15} /></button></div></div>}
+    </section>
+  </section>;
+}
+
+function CouriersView({ shipments, courierStatus, notify }: { shipments: Shipment[]; courierStatus: Record<CourierKey, CourierSourceStatus> | null; notify: (v: string) => void }) {
+  const { t } = useLang();
+
+  const byCourier = useMemo(() => {
+    const names = Object.keys(COURIER_TONES) as Shipment["courier"][];
+    return names.map((name) => {
+      const rows = shipments.filter((s) => s.courier === name);
+      const settled = rows.filter((s) => s.status === "Dihantar" || s.status === "Gagal dihantar");
+      const delivered = rows.filter((s) => s.status === "Dihantar").length;
+      return {
+        name,
+        count: rows.length,
+        cost: rows.reduce((sum, s) => sum + s.cost, 0),
+        avgCost: rows.length ? rows.reduce((sum, s) => sum + s.cost, 0) / rows.length : 0,
+        delivered,
+        settled: settled.length,
+        // Null while nothing has settled — a rate over zero completed
+        // shipments would be meaningless.
+        successRate: settled.length ? Math.round((delivered / settled.length) * 100) : null,
+      };
+    }).filter((row) => row.count > 0).sort((a, b) => b.count - a.count);
+  }, [shipments]);
+
+  const maxCount = Math.max(1, ...byCourier.map((row) => row.count));
+
+  return <section className="settings-grid">
+    <article className="panel settings-panel">
+      <h3>{t("Prestasi kurier")}</h3><p>{t("Pecahan penghantaran dan kadar berjaya mengikut kurier.")}</p>
+      {byCourier.map((row) => <div className="courier-row" key={row.name}>
+        <span className="courier-thumb" style={{ background: COURIER_TONES[row.name].color }}>{COURIER_TONES[row.name].short}</span>
+        <span className="courier-row-main">
+          <strong>{row.name}</strong>
+          <small>{row.count} {t("penghantaran")} · {t("Purata kos")} {currency(row.avgCost)}</small>
+          <i className="courier-bar"><b style={{ width: `${(row.count / maxCount) * 100}%`, background: COURIER_TONES[row.name].color }} /></i>
+        </span>
+        <span className="courier-row-rate"><strong>{row.successRate === null ? "—" : `${row.successRate}%`}</strong><small>{row.settled ? `${row.delivered}/${row.settled} ${t("selesai")}` : t("belum selesai")}</small></span>
+      </div>)}
+    </article>
+
+    <article className="panel settings-panel">
+      <h3>{t("Sambungan kurier")}</h3><p>{t("Status API penghantaran.")}</p>
+      {(Object.keys(COURIER_LABELS) as CourierKey[]).map((key) => {
+        const state = courierStatus?.[key] ?? null;
+        const issue = state === "error";
+        const label = state === null ? t("Memuatkan status…") : state === "real" ? t("Disambungkan") : state === "mock" ? t("Data ujian (mock)") : t("Ralat sambungan API");
+        const badge = state === null ? "…" : state === "real" ? t("Aktif") : state === "mock" ? "Mock" : t("Semak");
+        return <button className={`integration-row ${issue ? "has-warning" : state === "mock" ? "is-mock" : ""}`} key={key} onClick={() => issue && notify(t("Ralat sambungan API"))}>
+          <span className="courier-thumb" style={{ background: key === "jnt" ? COURIER_TONES["J&T Express"].color : "#0d9488" }}>{key === "jnt" ? "JT" : "EP"}</span>
+          <span><strong>{COURIER_LABELS[key]}</strong><small>{label}</small></span>
+          <span className="integration-state"><i />{badge}</span>
+        </button>;
+      })}
+    </article>
+  </section>;
+}
+
+function ShipmentDrawer({ shipment, onClose, notify }: { shipment: Shipment; onClose: () => void; notify: (v: string) => void }) {
+  const { t } = useLang();
+  const settled = shipment.status === "Dihantar" || shipment.status === "Gagal dihantar";
+  const lastIndex = shipment.checkpoints.length - 1;
+
+  return <div className="modal-layer drawer-layer" role="dialog" aria-modal="true" aria-label={`${t("Butiran penghantaran")} ${shipment.trackingNo}`}>
+    <aside className="drawer">
+      <div className="drawer-header"><div><p className="eyebrow">{t("BUTIRAN PENGHANTARAN")}</p><h2 className="tracking-no">{shipment.trackingNo}</h2></div><button className="modal-close" onClick={onClose}><X size={20} /></button></div>
+      <div className="drawer-status"><ShipmentStatusBadge status={shipment.status} /><span>{t("Ditempah")} {shipment.bookedAt}</span></div>
+
+      <section className="drawer-section"><h3>{t("Kurier")}</h3><div className="drawer-product"><span className="courier-thumb large" style={{ background: COURIER_TONES[shipment.courier].color }}>{COURIER_TONES[shipment.courier].short}</span><span><strong>{shipment.courier}</strong><small>{t(shipment.service)}</small></span><b>{currency(shipment.cost)}</b></div></section>
+
+      <section className="drawer-section"><h3>{t("Penerima")}</h3><div className="drawer-details">
+        <span><small>{t("Nama")}</small><strong>{shipment.recipient}</strong></span>
+        <span><small>{t("Pesanan")}</small><strong>{shipment.orderId}</strong></span>
+        <span><small>{t("Destinasi")}</small><strong>{shipment.destination}</strong></span>
+        <span><small>{t("Poskod")}</small><strong>{shipment.postcode}</strong></span>
+        <span><small>{t("Berat")}</small><strong>{shipment.weightKg} kg</strong></span>
+        <span><small>{t("Anggaran sampai")}</small><strong>{shipment.estimatedDelivery}</strong></span>
+      </div></section>
+
+      <section className="drawer-section"><h3>{t("Jejak penghantaran")}</h3><div className="order-timeline">{shipment.checkpoints.map((checkpoint, i) => {
+        // Still-moving shipments leave their newest checkpoint as "current"
+        // (amber); anything the courier flagged as a fault renders red.
+        const state = checkpoint.failed ? "failed" : i === lastIndex && !settled ? "current" : "complete";
+        return <span className={state} key={`${checkpoint.time}-${i}`}><i /><b>{t(checkpoint.status)}</b><small>{checkpoint.location} · {checkpoint.time}</small></span>;
+      })}</div></section>
+
+      <div className="drawer-total"><span>{t("Kos penghantaran")}</span><strong>{currency(shipment.cost)}</strong></div>
+      <div className="drawer-actions">
+        <button className="secondary-button" onClick={() => { navigator.clipboard?.writeText(shipment.trackingNo); notify(t("Nombor tracking disalin")); }}>{t("Salin no. tracking")}</button>
+        <a className="primary-button" href={COURIER_TRACK_URLS[shipment.courier](shipment.trackingNo)} target="_blank" rel="noreferrer">{t("Jejak di laman kurier")}</a>
+      </div>
+    </aside>
+  </div>;
+}
 
 function SettingsView({ notify, sourceStatus, paymentSettings, onSavePaymentSettings }: { notify: (v: string) => void; sourceStatus: Record<DataSourceKey, SourceStatus> | null; paymentSettings: PaymentSettings; onSavePaymentSettings: (next: PaymentSettings) => void }) {
   const { t } = useLang();
