@@ -2,10 +2,12 @@
 
 import {
   Bell,
+  CalendarDays,
   Clapperboard,
   ChevronLeft,
   ChevronDown,
   ChevronRight,
+  Clock,
   Download,
   LayoutDashboard,
   LoaderCircle,
@@ -50,7 +52,8 @@ import { CONTENT_STAGES, CONTENT_FORMATS, CONTENT_CHANNELS, daysUntil, isOverdue
 import { parseDriveUrl } from "../lib/content/drive";
 import { mockShoots } from "../lib/content/mock-shoots";
 import { SHOOT_LOCATIONS, SHOOT_STATUSES, shootStatusTone, type ContentShoot } from "../lib/content/shoots";
-import { buildMonthGrid, shiftMonth, monthLabelBM, groupByDate, toIsoDate, WEEKDAY_LABELS_BM } from "../lib/content/calendar";
+import { buildMonthGrid, shiftMonth, monthLabelBM, groupByDate, toIsoDate, parseIsoDate, MONTH_NAMES_BM, WEEKDAY_LABELS_BM } from "../lib/content/calendar";
+import { parseTimeLabel, formatTime12, timeOptionsIncluding } from "../lib/content/time";
 
 type Lang = "bm" | "en";
 
@@ -251,6 +254,7 @@ const EN: Record<string, string> = {
   "Penggambaran disimpan": "Shoot saved",
   "Penggambaran dikemas kini (tidak kekal tanpa pangkalan data)": "Shoot updated (not persisted without a database)",
   "Gagal menyimpan penggambaran": "Failed to save shoot", "Penggambaran dipadam": "Shoot deleted",
+  "Pilih tarikh": "Pick a date", "Pilih masa": "Pick a time", "Minggu depan": "Next week",
   "Januari": "January", "Februari": "February", "Mac": "March", "April": "April", "Mei": "May", "Jun": "June",
   "Julai": "July", "Ogos": "August", "September": "September", "Oktober": "October",
   "November": "November", "Disember": "December",
@@ -1847,6 +1851,146 @@ function ContentBoard({ pieces, products, onSelect, onCreate }: { pieces: Conten
   </section>;
 }
 
+/**
+ * Closes a popover on outside click, Escape, or scroll of an ancestor.
+ * The drawers scroll, so a popover left open while scrolling would detach
+ * from its trigger.
+ */
+function useDismissable(open: boolean, close: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, close]);
+  return ref;
+}
+
+/**
+ * Date picker replacing <input type="date">, whose native rendering differs
+ * per browser and looks nothing like the rest of the form on iOS.
+ * Value and onChange are YYYY-MM-DD, same as the native input.
+ */
+function DateField({ value, onChange, disabled, ariaLabel }: { value: string; onChange: (iso: string) => void; disabled?: boolean; ariaLabel?: string }) {
+  const { t } = useLang();
+  const [open, setOpen] = useState(false);
+  const ref = useDismissable(open, () => setOpen(false));
+
+  const today = new Date();
+  const parsed = parseIsoDate(value);
+  const [cursor, setCursor] = useState(() => parsed
+    ? { year: parsed.year, month: parsed.month }
+    : { year: today.getFullYear(), month: today.getMonth() });
+
+  // Re-centre on the selected month each time the popover opens.
+  useEffect(() => {
+    if (!open) return;
+    const current = parseIsoDate(value);
+    if (current) setCursor({ year: current.year, month: current.month });
+  }, [open, value]);
+
+  const grid = useMemo(() => buildMonthGrid(cursor.year, cursor.month), [cursor]);
+  const label = parsed
+    ? `${parsed.day} ${t(MONTH_NAMES_BM[parsed.month])} ${parsed.year}`
+    : t("Pilih tarikh");
+
+  return <div className="field-picker" ref={ref}>
+    <button
+      type="button"
+      className={`settings-input picker-trigger ${parsed ? "" : "is-empty"}`}
+      onClick={() => setOpen((v) => !v)}
+      disabled={disabled}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-label={ariaLabel}
+    >
+      <CalendarDays size={15} />
+      <span>{label}</span>
+      <ChevronDown size={14} className="picker-chevron" />
+    </button>
+
+    {open && <div className="picker-pop date-pop" role="dialog" aria-label={ariaLabel ?? t("Pilih tarikh")}>
+      <div className="picker-pop-head">
+        <button type="button" className="cal-arrow" onClick={() => setCursor((c) => shiftMonth(c.year, c.month, -1))} aria-label={t("Bulan sebelumnya")}><ChevronLeft size={15} /></button>
+        <strong>{t(MONTH_NAMES_BM[cursor.month])} {cursor.year}</strong>
+        <button type="button" className="cal-arrow" onClick={() => setCursor((c) => shiftMonth(c.year, c.month, 1))} aria-label={t("Bulan seterusnya")}><ChevronRight size={15} /></button>
+      </div>
+      <div className="mini-cal">
+        {WEEKDAY_LABELS_BM.map((day) => <span className="mini-cal-weekday" key={day}>{t(day).slice(0, 1)}</span>)}
+        {grid.map((day) => <button
+          type="button"
+          key={day.date}
+          className={`mini-cal-day ${day.inMonth ? "" : "is-outside"} ${day.date === value ? "is-selected" : ""} ${day.isToday ? "is-today" : ""}`}
+          onClick={() => { onChange(day.date); setOpen(false); }}
+        >{day.dayOfMonth}</button>)}
+      </div>
+      <div className="picker-pop-foot">
+        <button type="button" className="picker-quick" onClick={() => { onChange(toIsoDate(new Date())); setOpen(false); }}>{t("Hari ini")}</button>
+        <button type="button" className="picker-quick" onClick={() => { const d = new Date(); d.setDate(d.getDate() + 7); onChange(toIsoDate(d)); setOpen(false); }}>{t("Minggu depan")}</button>
+      </div>
+    </div>}
+  </div>;
+}
+
+/**
+ * Time picker replacing the free-text call-time field. Values stay in the
+ * stored "9:00 AM" format; an off-grid existing value is kept selectable.
+ */
+function TimeField({ value, onChange, disabled, ariaLabel }: { value: string; onChange: (label: string) => void; disabled?: boolean; ariaLabel?: string }) {
+  const { t } = useLang();
+  const [open, setOpen] = useState(false);
+  const ref = useDismissable(open, () => setOpen(false));
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const options = useMemo(() => timeOptionsIncluding(value), [value]);
+  const parsed = parseTimeLabel(value);
+  const normalised = parsed ? formatTime12(parsed.hour, parsed.minute) : "";
+
+  // Bring the current time into view instead of opening at 5am every time.
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const selected = listRef.current.querySelector(".is-selected");
+    if (selected) selected.scrollIntoView({ block: "center" });
+  }, [open]);
+
+  return <div className="field-picker" ref={ref}>
+    <button
+      type="button"
+      className={`settings-input picker-trigger ${normalised ? "" : "is-empty"}`}
+      onClick={() => setOpen((v) => !v)}
+      disabled={disabled}
+      aria-haspopup="listbox"
+      aria-expanded={open}
+      aria-label={ariaLabel}
+    >
+      <Clock size={15} />
+      <span>{normalised || t("Pilih masa")}</span>
+      <ChevronDown size={14} className="picker-chevron" />
+    </button>
+
+    {open && <div className="picker-pop time-pop" role="listbox" aria-label={ariaLabel ?? t("Pilih masa")} ref={listRef}>
+      {options.map((option) => <button
+        type="button"
+        key={option}
+        role="option"
+        aria-selected={option === normalised}
+        className={`time-option ${option === normalised ? "is-selected" : ""}`}
+        onClick={() => { onChange(option); setOpen(false); }}
+      >{option}</button>)}
+    </div>}
+  </div>;
+}
+
 function ContentCalendar({ pieces, shoots, onSelectPiece, onSelectShoot, onCreateShoot }: { pieces: ContentPiece[]; shoots: ContentShoot[]; onSelectPiece: (p: ContentPiece) => void; onSelectShoot: (s: ContentShoot) => void; onCreateShoot: (date: string) => void }) {
   const { t } = useLang();
   const { can } = useRole();
@@ -1932,12 +2076,12 @@ function ShootDrawer({ shoot, pieces, isNew, onClose, onSave, onDelete, onSelect
       </label>
 
       <div className="booking-fields">
-        <label className="settings-field"><small>{t("Tarikh shoot")}</small>
-          <input className="settings-input" type="date" value={draft.date} onChange={(e) => set("date", e.target.value)} disabled={!editable} />
-        </label>
-        <label className="settings-field"><small>{t("Masa panggilan")}</small>
-          <input className="settings-input" value={draft.callTime} onChange={(e) => set("callTime", e.target.value)} disabled={!editable} placeholder="9:00 AM" />
-        </label>
+        <div className="settings-field"><small>{t("Tarikh shoot")}</small>
+          <DateField value={draft.date} onChange={(iso) => set("date", iso)} disabled={!editable} ariaLabel={t("Tarikh shoot")} />
+        </div>
+        <div className="settings-field"><small>{t("Masa panggilan")}</small>
+          <TimeField value={draft.callTime} onChange={(label) => set("callTime", label)} disabled={!editable} ariaLabel={t("Masa panggilan")} />
+        </div>
       </div>
 
       <div className="booking-fields">
@@ -2046,9 +2190,9 @@ function ContentDrawer({ piece, products, shoots, isNew, onClose, onSave, onDele
       </div>
 
       <div className="booking-fields">
-        <label className="settings-field"><small>{t("Tarikh terbit")}</small>
-          <input className="settings-input" type="date" value={draft.scheduledFor} onChange={(e) => set("scheduledFor", e.target.value)} disabled={!editable} />
-        </label>
+        <div className="settings-field"><small>{t("Tarikh terbit")}</small>
+          <DateField value={draft.scheduledFor} onChange={(iso) => set("scheduledFor", iso)} disabled={!editable} ariaLabel={t("Tarikh terbit")} />
+        </div>
         <label className="settings-field"><small>{t("Status")}</small>
           <select className="settings-input" value={draft.status} onChange={(e) => set("status", e.target.value as ContentStatus)} disabled={!editable && !can("approveContent")}>{CONTENT_STAGES.map((s) => <option key={s} value={s}>{t(s)}</option>)}</select>
         </label>

@@ -826,6 +826,56 @@ select.settings-input { appearance: none; background-image: linear-gradient(45de
 .cal-event.is-live:hover { background: var(--surface-hover); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .cal-hint { margin: 11px 0 0; font-size: 9px; color: var(--muted); }
 
+/* --- Date & time pickers ---
+   These replace <input type="date"> / free-text time, whose native rendering
+   differs per browser and looked nothing like the rest of the form on iOS. */
+.field-picker { position: relative; }
+.settings-input.picker-trigger {
+  /* Two classes so it outranks `button.settings-input`, which would
+     otherwise force display:block and break the flex row. */
+  display: flex; align-items: center; gap: 9px; text-align: left; cursor: pointer;
+  /* Inherits box styling from .settings-input so it lines up with the
+     text fields it sits beside. */
+}
+.picker-trigger > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-trigger > svg:first-child { color: var(--muted); flex-shrink: 0; }
+.picker-trigger.is-empty > span { color: var(--muted-dim); font-weight: 600; }
+.picker-chevron { color: var(--muted-dim); flex-shrink: 0; }
+.picker-trigger:not(:disabled):hover { border-color: var(--line-strong); background: var(--surface-hover); }
+.picker-trigger[aria-expanded="true"] { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+
+.picker-pop {
+  position: absolute; z-index: 60; top: calc(100% + 6px); left: 0;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-pop);
+}
+.date-pop { width: 258px; max-width: calc(100vw - 32px); padding: 11px; }
+.picker-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 9px; }
+.picker-pop-head strong { font-size: 12px; color: var(--ink); }
+.picker-pop-head .cal-arrow { width: 26px; height: 26px; }
+
+.mini-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.mini-cal-weekday { display: grid; place-items: center; height: 22px; font-size: 8px; font-weight: 750; letter-spacing: 0.04em; color: var(--muted); text-transform: uppercase; }
+.mini-cal-day {
+  height: 30px; display: grid; place-items: center; border: 0; border-radius: var(--radius-xs);
+  background: transparent; font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); cursor: pointer;
+  transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out);
+}
+.mini-cal-day:hover { background: var(--surface-alt); }
+.mini-cal-day.is-outside { color: var(--muted-dim); }
+.mini-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--line-strong); font-weight: 700; }
+.mini-cal-day.is-selected { background: var(--primary); color: white; font-weight: 700; box-shadow: none; }
+.mini-cal-day.is-selected:hover { background: var(--primary-hover); }
+
+.picker-pop-foot { display: flex; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.picker-quick { flex: 1; height: 30px; border: 1px solid var(--line); border-radius: var(--radius-xs); background: var(--surface); font-size: 10px; font-weight: 700; color: var(--ink-soft); cursor: pointer; }
+.picker-quick:hover { border-color: var(--line-strong); background: var(--surface-hover); }
+
+.time-pop { width: 100%; min-width: 132px; max-height: 232px; overflow-y: auto; padding: 5px; display: flex; flex-direction: column; gap: 1px; }
+.time-option { padding: 8px 11px; border: 0; border-radius: var(--radius-xs); background: transparent; text-align: left; font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); cursor: pointer; }
+.time-option:hover { background: var(--surface-alt); }
+.time-option.is-selected { background: var(--primary); color: white; font-weight: 700; }
+
 /* --- Drive embeds --- */
 .drive-actions { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
 .drive-panel { padding-bottom: 16px; }
@@ -1108,8 +1158,8 @@ select.settings-input { appearance: none; background-image: linear-gradient(45de
 /* Each selector is listed explicitly rather than using a bare `.settings-input`
    so it ties with `.settings-panel input` on specificity and wins by order —
    a bare class would lose inside a settings panel. */
-input.settings-input, select.settings-input, textarea.settings-input { display: block; width: 100%; height: auto; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface-alt); border-radius: var(--radius-xs); font-size: 12px; font-weight: 600; color: var(--ink); }
-input.settings-input:focus, select.settings-input:focus, textarea.settings-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+input.settings-input, select.settings-input, textarea.settings-input, button.settings-input { display: block; width: 100%; height: auto; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface-alt); border-radius: var(--radius-xs); font-size: 12px; font-weight: 600; color: var(--ink); }
+input.settings-input:focus, select.settings-input:focus, textarea.settings-input:focus, button.settings-input:focus-visible { outline: 2px solid var(--primary); outline-offset: -1px; }
 .qr-upload-row { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
 .qr-upload-preview { width: 56px; height: 56px; border-radius: var(--radius-xs); border: 1px solid var(--line); object-fit: contain; background: white; }
 .qr-upload-row input[type="file"] { font-size: 10px; color: var(--muted); flex: 1; min-width: 0; }
