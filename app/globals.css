@@ -753,9 +753,59 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
 .booking-quote span { font-size: 10px; color: var(--muted); }
 .booking-quote strong { font-family: var(--font-mono); font-size: 18px; color: var(--ink); }
 
+/* --- Content board --- */
+.content-board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; padding: 4px 0 2px; }
+.content-column { display: flex; flex-direction: column; min-width: 0; }
+.content-column-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 9px; border-bottom: 1px solid var(--line); margin-bottom: 9px; }
+.content-column-head strong { font-size: 10px; font-weight: 750; letter-spacing: 0.02em; color: var(--ink-soft); }
+.content-column-head span { font-family: var(--font-mono); font-size: 9px; color: var(--muted); background: var(--surface-alt); border-radius: 99px; padding: 2px 7px; }
+.content-column-body { display: flex; flex-direction: column; gap: 8px; }
+.content-column-empty { margin: 0; padding: 14px 4px; font-size: 9px; color: var(--muted-dim); text-align: center; border: 1px dashed var(--line); border-radius: var(--radius-xs); }
+.content-card {
+  display: flex; flex-direction: column; gap: 7px; width: 100%; padding: 11px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface);
+  text-align: left; cursor: pointer; box-shadow: var(--shadow-xs);
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out), transform 150ms var(--ease-out);
+}
+.content-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.content-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.content-card.is-late { border-left: 3px solid var(--danger); }
+.content-card-top { display: flex; align-items: center; gap: 6px; }
+.content-card-top small { font-size: 8px; font-weight: 700; letter-spacing: 0.02em; color: var(--muted); text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.content-channel-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.content-card-link { color: var(--muted-dim); margin-left: auto; flex-shrink: 0; }
+.content-card > strong { font-size: 11px; line-height: 1.4; color: var(--ink); }
+.content-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
+.content-card-meta small { font-family: var(--font-mono); font-size: 8px; color: var(--muted); }
+.content-card-meta .is-late-text { color: var(--danger); font-weight: 700; }
+.product-thumb.tiny { width: 20px; height: 20px; font-size: 7px; border-radius: 5px; flex-shrink: 0; }
+.content-product-hint { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: center; margin-top: 9px; padding: 10px 12px; background: var(--surface-alt); border-radius: var(--radius-xs); }
+.content-product-hint strong { display: block; font-size: 11px; color: var(--ink); }
+.content-product-hint small { display: block; font-size: 9px; color: var(--muted); margin-top: 2px; }
+textarea.content-notes { resize: vertical; min-height: 62px; line-height: 1.5; font-family: inherit; }
+select.settings-input { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 16px) 17px, calc(100% - 11px) 17px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 32px; cursor: pointer; }
+.settings-input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* --- Drive embeds --- */
+.drive-actions { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+.drive-panel { padding-bottom: 16px; }
+.drive-frame { width: 100%; height: 460px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-alt); }
+.drive-hint { margin: 10px 0 0; font-size: 9px; color: var(--muted); }
+.drive-preview { margin-top: 10px; display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
+.drive-preview iframe { width: 100%; height: 260px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-alt); }
+
+@media (max-width: 1100px) {
+  .content-board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 @media (max-width: 640px) {
   .courier-picker, .booking-fields { grid-template-columns: 1fr; }
   .notification-panel { position: fixed; top: 62px; right: 16px; left: 16px; width: auto; }
+  .content-board { grid-template-columns: 1fr; }
+  .content-column-body { flex-direction: row; overflow-x: auto; padding-bottom: 6px; }
+  .content-column-body > .content-card { min-width: 200px; }
+  .content-column-empty { min-width: 120px; }
+  .drive-frame { height: 340px; }
 }
 
 .product-cell { display: flex; align-items: center; gap: 9px; min-width: 225px; }
@@ -1010,8 +1060,11 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
    inside .settings-panel. Declared after `.settings-panel input` so it wins
    the equal-specificity tie there. */
 .settings-field small { display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-input.settings-input { display: block; width: 100%; height: auto; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface-alt); border-radius: var(--radius-xs); font-size: 12px; font-weight: 600; color: var(--ink); }
-input.settings-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+/* Each selector is listed explicitly rather than using a bare `.settings-input`
+   so it ties with `.settings-panel input` on specificity and wins by order —
+   a bare class would lose inside a settings panel. */
+input.settings-input, select.settings-input, textarea.settings-input { display: block; width: 100%; height: auto; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface-alt); border-radius: var(--radius-xs); font-size: 12px; font-weight: 600; color: var(--ink); }
+input.settings-input:focus, select.settings-input:focus, textarea.settings-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 .qr-upload-row { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
 .qr-upload-preview { width: 56px; height: 56px; border-radius: var(--radius-xs); border: 1px solid var(--line); object-fit: contain; background: white; }
 .qr-upload-row input[type="file"] { font-size: 10px; color: var(--muted); flex: 1; min-width: 0; }
@@ -1265,7 +1318,7 @@ input.settings-input:focus { outline: 2px solid var(--primary); outline-offset: 
   .mobile-bottom-nav {
     position: fixed;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     left: 0;
     right: 0;
     bottom: 0;

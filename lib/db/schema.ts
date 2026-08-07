@@ -35,6 +35,30 @@ export const stockLevels = pgTable("stock_levels", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Content plan items from the Kandungan board. Unlike stock_levels these
+// rows are the source of truth, not an override — once a database is
+// configured the seeded plan is ignored entirely.
+export const contentPieces = pgTable("content_pieces", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  format: text("format").notNull(),
+  channel: text("channel").notNull(),
+  status: text("status").notNull(),
+  scheduledFor: text("scheduled_for").notNull(),
+  owner: text("owner").notNull().default(""),
+  productSku: text("product_sku"),
+  driveUrl: text("drive_url"),
+  notes: text("notes").notNull().default(""),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// The shared Google Drive folder the content team works out of.
+export const contentSettings = pgTable("content_settings", {
+  key: text("key").primaryKey().default("current"),
+  driveFolderUrl: text("drive_folder_url"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Bank details and QR code shown in the "Payment ke KretivCo" card,
 // editable by the KretivCo team from Tetapan > Kaedah pembayaran.
 // qrImageDataUrl is a base64 data URL of an uploaded QR image; null

@@ -2,12 +2,16 @@
 
 import {
   Bell,
+  Clapperboard,
   ChevronLeft,
   ChevronDown,
   ChevronRight,
   Download,
   LayoutDashboard,
   LoaderCircle,
+  ExternalLink,
+  FolderOpen,
+  Link2,
   Menu,
   Pencil,
   RefreshCw,
@@ -40,6 +44,9 @@ import { aggregateCustomers, summariseCustomers, type Customer } from "../lib/cu
 import { deriveNotifications, type AppNotification } from "../lib/notifications";
 import { quoteFor } from "../lib/logistics/booking";
 import type { CourierName } from "../lib/logistics/types";
+import { mockContent } from "../lib/content/mock-content";
+import { CONTENT_STAGES, CONTENT_FORMATS, CONTENT_CHANNELS, daysUntil, isOverdue, isDueSoon, type ContentPiece, type ContentStatus } from "../lib/content/types";
+import { parseDriveUrl } from "../lib/content/drive";
 
 type Lang = "bm" | "en";
 
@@ -186,6 +193,37 @@ const EN: Record<string, string> = {
   "Ralat sambungan kurier": "Courier connection error",
   "Menunggu pickup kurier": "Awaiting courier pickup",
 
+  // Content
+  "Kandungan": "Content", "Papan": "Board", "Pustaka": "Library",
+  "Papan kandungan": "Content board", "kandungan dirancang": "pieces planned",
+  "Dalam perancangan": "In the pipeline", "Belum diterbitkan": "Not yet published",
+  "Perlu kelulusan Chef": "Awaiting Chef approval", "Menunggu semakan": "Waiting for review",
+  "Akan datang": "Coming up", "Dalam 2 hari": "Within 2 days",
+  "Lewat jadual": "Behind schedule", "Tarikh sudah berlalu": "Go-live date has passed",
+  "Semua saluran kandungan": "All content channels", "Kandungan baharu": "New content",
+  "Idea": "Idea", "Sedang dibuat": "In production", "Perlu kelulusan": "Needs approval",
+  "Diterbitkan": "Published", "Tiada": "None",
+  "Carousel": "Carousel", "Foto produk": "Product photo", "Live": "Live", "Artikel": "Article",
+  "hari lewat": "days late", "hari ini": "today", "hari lagi": "days to go",
+  "BUTIRAN KANDUNGAN": "CONTENT DETAILS", "KANDUNGAN BAHARU": "NEW CONTENT",
+  "Butiran kandungan": "Content details", "Tajuk": "Title",
+  "Contoh: Resepi Nasi Mandi 15 minit": "e.g. 15-minute Nasi Mandi recipe",
+  "Format": "Format", "Tarikh terbit": "Go-live date",
+  "Produk berkaitan": "Related product", "Tiada produk khusus": "No specific product",
+  "Terjual minggu ini": "Sold this week", "Padam": "Delete",
+  "Kandungan disimpan": "Content saved",
+  "Kandungan dikemas kini (tidak kekal tanpa pangkalan data)": "Content updated (not persisted without a database)",
+  "Gagal menyimpan kandungan": "Failed to save content", "Kandungan dipadam": "Content deleted",
+  "Folder Google Drive": "Google Drive folder",
+  "Tampal pautan folder Drive pasukan. Folder perlu dikongsi 'Sesiapa yang ada pautan' untuk paparan terus.": "Paste your team's Drive folder link. The folder must be shared with \"Anyone with the link\" for the inline preview to work.",
+  "Pautan folder": "Folder link", "Pautan Google Drive": "Google Drive link",
+  "Pautan Google Drive tidak sah": "Not a valid Google Drive link",
+  "Simpan folder": "Save folder", "Folder Drive disimpan": "Drive folder saved", "Buka di Drive": "Open in Drive",
+  "Pustaka kandungan": "Content library", "Fail terus dari folder Drive pasukan.": "Files straight from your team's Drive folder.",
+  "Belum ada folder Drive": "No Drive folder yet",
+  "Tampal pautan folder di atas untuk lihat fail di sini.": "Paste a folder link above to see files here.",
+  "Kalau paparan kosong atau minta log masuk, folder itu belum dikongsi secara umum.": "If this is blank or asks you to sign in, the folder isn't shared publicly yet.",
+
   // Shipment booking
   "TEMPAH PENGHANTARAN": "BOOK SHIPMENT", "Tempah penghantaran": "Book shipment", "Tempah AWB untuk": "Book an AWB for",
   "Anggaran kos": "Estimated cost", "Menempah…": "Booking…", "Tempahan gagal": "Booking failed",
@@ -326,6 +364,7 @@ const attributionSources = [
 const nav = [
   { id: "overview", label: "Ringkasan", icon: LayoutDashboard },
   { id: "sales", label: "Jualan", icon: ShoppingBag, count: 12 },
+  { id: "content", label: "Kandungan", icon: Clapperboard },
   { id: "logistics", label: "Logistik", icon: Truck, count: 2 },
   { id: "finance", label: "Kewangan", icon: WalletCards, count: 1 },
   { id: "settings", label: "Tetapan", icon: Settings },
@@ -513,6 +552,10 @@ export default function Home() {
   const [sourceStatus, setSourceStatus] = useState<Record<DataSourceKey, SourceStatus> | null>(null);
   const [importedOrders, setImportedOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [contentPieces, setContentPieces] = useState<ContentPiece[]>(mockContent);
+  const [contentTab, setContentTab] = useState("board");
+  const [driveFolderUrl, setDriveFolderUrl] = useState<string | null>(null);
+  const [openContent, setOpenContent] = useState<{ piece: ContentPiece; isNew: boolean } | null>(null);
   const [savingSku, setSavingSku] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const [bookingOrder, setBookingOrder] = useState<Order | null>(null);
@@ -520,6 +563,21 @@ export default function Home() {
   const [liveShipments, setLiveShipments] = useState<Shipment[] | null>(null);
   const [courierStatus, setCourierStatus] = useState<Record<CourierKey, CourierSourceStatus> | null>(null);
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch("/api/content").then((res) => res.json()),
+      fetch("/api/content-settings").then((res) => res.json()),
+    ])
+      .then(([content, settings]: [{ pieces: ContentPiece[] }, { driveFolderUrl: string | null }]) => {
+        if (cancelled) return;
+        setContentPieces(content.pieces);
+        setDriveFolderUrl(settings.driveFolderUrl);
+      })
+      .catch((err) => console.error("Failed to load content", err));
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -573,6 +631,45 @@ export default function Home() {
       .then((data: { persisted: boolean }) => notify(t(data.persisted ? "Paras stok disimpan" : "Paras stok dikemas kini (tidak kekal tanpa pangkalan data)")))
       .catch((err) => { console.error("Failed to save stock level", err); notify(t("Gagal menyimpan paras stok")); })
       .finally(() => setSavingSku(null));
+  };
+
+  const saveContent = (piece: ContentPiece) => {
+    setContentPieces((current) => {
+      const exists = current.some((p) => p.id === piece.id);
+      const next = exists ? current.map((p) => (p.id === piece.id ? piece : p)) : [...current, piece];
+      return [...next].sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor));
+    });
+    setOpenContent(null);
+    fetch("/api/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(piece) })
+      .then((res) => res.json())
+      .then((data: { persisted?: boolean; error?: string }) => {
+        if (data.error) notify(data.error);
+        else notify(t(data.persisted ? "Kandungan disimpan" : "Kandungan dikemas kini (tidak kekal tanpa pangkalan data)"));
+      })
+      .catch((err) => { console.error("Failed to save content", err); notify(t("Gagal menyimpan kandungan")); });
+  };
+
+  const deleteContent = (id: string) => {
+    setContentPieces((current) => current.filter((p) => p.id !== id));
+    setOpenContent(null);
+    fetch(`/api/content?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+      .catch((err) => console.error("Failed to delete content", err));
+    notify(t("Kandungan dipadam"));
+  };
+
+  const saveDriveFolder = (url: string | null) => {
+    setDriveFolderUrl(url);
+    fetch("/api/content-settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFolderUrl: url }) })
+      .catch((err) => console.error("Failed to save Drive folder", err));
+  };
+
+  // Next sequential CT-### id, so a new card doesn't collide with an existing one.
+  const nextContentId = () => {
+    const highest = contentPieces.reduce((max, p) => {
+      const n = Number(p.id.match(/(\d+)$/)?.[1] ?? 0);
+      return n > max ? n : max;
+    }, 0);
+    return `CT-${String(highest + 1).padStart(3, "0")}`;
   };
 
   const notifications = useMemo(() => deriveNotifications({
@@ -892,6 +989,31 @@ export default function Home() {
             {salesTab === "channels" && <ChannelsView notify={notify} />}
             {salesTab === "sources" && <AttributionView onOpenOrders={openOrdersFor} />}
           </>}
+          {active === "content" && <>
+            <SectionTabs value={contentTab} onChange={setContentTab} tabs={[{ id: "board", label: "Papan" }, { id: "library", label: "Pustaka" }]} />
+            {contentTab === "board" && <ContentBoard
+              pieces={contentPieces}
+              products={products}
+              onSelect={(piece) => setOpenContent({ piece, isNew: false })}
+              onCreate={() => setOpenContent({
+                isNew: true,
+                piece: {
+                  id: nextContentId(),
+                  title: "",
+                  format: "Video pendek",
+                  channel: "TikTok",
+                  status: "Idea",
+                  scheduledFor: new Date().toISOString().slice(0, 10),
+                  owner: role,
+                  productSku: null,
+                  driveUrl: null,
+                  notes: "",
+                  updatedAt: new Date().toISOString().slice(0, 10),
+                },
+              })}
+            />}
+            {contentTab === "library" && <ContentLibrary driveFolderUrl={driveFolderUrl} onSaveFolder={saveDriveFolder} notify={notify} />}
+          </>}
           {active === "logistics" && <>
             <SectionTabs value={logisticsTab} onChange={setLogisticsTab} tabs={[{ id: "shipments", label: "Penghantaran" }, { id: "couriers", label: "Kurier" }]} />
             {logisticsTab === "shipments" && <ShipmentsPanel shipments={shipmentList} notify={notify} onSelectShipment={setSelectedShipment} />}
@@ -928,6 +1050,14 @@ export default function Home() {
         onOpenShipment={(shipment) => { setSelectedOrder(null); setActive("logistics"); setLogisticsTab("shipments"); setSelectedShipment(shipment); }}
         onBookShipment={() => { setBookingOrder(selectedOrder); setSelectedOrder(null); }}
         notify={notify}
+      />}
+      {openContent && <ContentDrawer
+        piece={openContent.piece}
+        products={products}
+        isNew={openContent.isNew}
+        onClose={() => setOpenContent(null)}
+        onSave={saveContent}
+        onDelete={deleteContent}
       />}
       {bookingOrder && <BookShipmentModal
         order={bookingOrder}
@@ -1555,6 +1685,181 @@ function BookShipmentModal({ order, onClose, onBook }: { order: Order; onClose: 
       <button className="primary-button" disabled={!ready} onClick={submit}>{busy ? t("Menempah…") : t("Tempah penghantaran")}</button>
     </div>
   </div></div>;
+}
+
+const CONTENT_STATUS_CLASS: Record<ContentStatus, string> = {
+  "Idea": "ship-pending",
+  "Sedang dibuat": "ship-transit",
+  "Perlu kelulusan": "ship-out",
+  "Dijadualkan": "ship-transit",
+  "Diterbitkan": "ship-delivered",
+};
+
+const CONTENT_CHANNEL_TONES: Record<string, string> = {
+  TikTok: "#0d9488", Instagram: "#db2777", Threads: "#1c1917", "Shopee Live": "#ea580c", "BCL.my": "#d97706",
+};
+
+function ContentBoard({ pieces, products, onSelect, onCreate }: { pieces: ContentPiece[]; products: Product[]; onSelect: (p: ContentPiece) => void; onCreate: () => void }) {
+  const { t } = useLang();
+  const [channel, setChannel] = useState("Semua saluran kandungan");
+
+  const filtered = useMemo(
+    () => pieces.filter((p) => channel === "Semua saluran kandungan" || p.channel === channel),
+    [pieces, channel],
+  );
+
+  const published = filtered.filter((p) => p.status === "Diterbitkan").length;
+  const overdue = filtered.filter((p) => isOverdue(p)).length;
+  const dueSoon = filtered.filter((p) => isDueSoon(p)).length;
+  const awaiting = filtered.filter((p) => p.status === "Perlu kelulusan").length;
+
+  return <section className="view-stack">
+    <div className="metrics-grid">
+      <article className="metric metric-featured"><p>{t("Dalam perancangan")}</p><h2>{filtered.length - published}</h2><small>{t("Belum diterbitkan")}</small></article>
+      <article className="metric"><p>{t("Perlu kelulusan Chef")}</p><h2>{awaiting}</h2><small>{t("Menunggu semakan")}</small></article>
+      <article className="metric"><p>{t("Akan datang")}</p><h2>{dueSoon}</h2><small>{t("Dalam 2 hari")}</small></article>
+      <article className="metric"><p>{t("Lewat jadual")}</p><h2>{overdue}</h2><small>{t("Tarikh sudah berlalu")}</small></article>
+    </div>
+
+    <section className="panel">
+      <div className="panel-heading orders-heading"><div><h3>{t("Papan kandungan")}</h3><p>{filtered.length} {t("kandungan dirancang")}</p></div><div className="table-actions">
+        <Dropdown className="filter-select" value={channel} onChange={setChannel} options={["Semua saluran kandungan", ...CONTENT_CHANNELS].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Tapis saluran")} />
+        <GatedButton permission="editContent" className="primary-button" onClick={onCreate}>{t("Kandungan baharu")}</GatedButton>
+      </div></div>
+
+      <div className="content-board">{CONTENT_STAGES.map((stage) => {
+        const column = filtered.filter((p) => p.status === stage);
+        return <div className="content-column" key={stage}>
+          <div className="content-column-head"><strong>{t(stage)}</strong><span>{column.length}</span></div>
+          <div className="content-column-body">{column.map((piece) => {
+            const days = daysUntil(piece.scheduledFor);
+            const late = isOverdue(piece);
+            const product = products.find((p) => p.sku === piece.productSku);
+            const drive = piece.driveUrl ? parseDriveUrl(piece.driveUrl) : null;
+            return <button className={`content-card ${late ? "is-late" : ""}`} key={piece.id} onClick={() => onSelect(piece)}>
+              <span className="content-card-top">
+                <i className="content-channel-dot" style={{ background: CONTENT_CHANNEL_TONES[piece.channel] ?? "#64748b" }} />
+                <small>{piece.channel} · {t(piece.format)}</small>
+                {drive && <Link2 size={12} className="content-card-link" />}
+              </span>
+              <strong>{piece.title}</strong>
+              <span className="content-card-meta">
+                <small className={late ? "is-late-text" : ""}>{piece.scheduledFor}{days !== null && piece.status !== "Diterbitkan" ? ` · ${late ? `${Math.abs(days)} ${t("hari lewat")}` : days === 0 ? t("hari ini") : `${days} ${t("hari lagi")}`}` : ""}</small>
+                {product && <span className="product-thumb tiny" style={{ background: product.tone }}>{product.code}</span>}
+              </span>
+            </button>;
+          })}
+          {column.length === 0 && <p className="content-column-empty">{t("Tiada")}</p>}
+          </div>
+        </div>;
+      })}</div>
+    </section>
+  </section>;
+}
+
+function ContentLibrary({ driveFolderUrl, onSaveFolder, notify }: { driveFolderUrl: string | null; onSaveFolder: (url: string | null) => void; notify: (v: string) => void }) {
+  const { t } = useLang();
+  const { can, deniedReason } = useRole();
+  const [draft, setDraft] = useState(driveFolderUrl ?? "");
+
+  useEffect(() => { setDraft(driveFolderUrl ?? ""); }, [driveFolderUrl]);
+
+  const ref = driveFolderUrl ? parseDriveUrl(driveFolderUrl) : null;
+  const draftRef = draft.trim() ? parseDriveUrl(draft) : null;
+  const draftInvalid = draft.trim().length > 0 && (draftRef === null || draftRef.kind === "unknown");
+
+  return <section className="view-stack">
+    <article className="panel settings-panel">
+      <h3>{t("Folder Google Drive")}</h3>
+      <p>{t("Tampal pautan folder Drive pasukan. Folder perlu dikongsi 'Sesiapa yang ada pautan' untuk paparan terus.")}</p>
+      <label className="settings-field"><small>{t("Pautan folder")}</small>
+        <input className="settings-input" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="https://drive.google.com/drive/folders/..." />
+      </label>
+      {draftInvalid && <p className="import-note">{t("Pautan Google Drive tidak sah")}</p>}
+      <div className="drive-actions">
+        <button className="primary-button" disabled={!can("editSettings") || draftInvalid} title={can("editSettings") ? undefined : deniedReason} onClick={() => { onSaveFolder(draft.trim() || null); notify(t("Folder Drive disimpan")); }}>{t("Simpan folder")}</button>
+        {ref && <a className="secondary-button" href={ref.url} target="_blank" rel="noreferrer">{t("Buka di Drive")}<ExternalLink size={13} /></a>}
+      </div>
+    </article>
+
+    <article className="panel drive-panel">
+      <div className="panel-heading"><div><h3>{t("Pustaka kandungan")}</h3><p>{t("Fail terus dari folder Drive pasukan.")}</p></div></div>
+      {ref?.embedUrl
+        ? <iframe className="drive-frame" src={ref.embedUrl} title={t("Pustaka kandungan")} loading="lazy" />
+        : <div className="empty-state"><FolderOpen size={28} /><strong>{t("Belum ada folder Drive")}</strong><span>{t("Tampal pautan folder di atas untuk lihat fail di sini.")}</span></div>}
+      {ref?.embedUrl && <p className="drive-hint">{t("Kalau paparan kosong atau minta log masuk, folder itu belum dikongsi secara umum.")}</p>}
+    </article>
+  </section>;
+}
+
+function ContentDrawer({ piece, products, isNew, onClose, onSave, onDelete }: { piece: ContentPiece; products: Product[]; isNew: boolean; onClose: () => void; onSave: (p: ContentPiece) => void; onDelete: (id: string) => void }) {
+  const { t } = useLang();
+  const { can, deniedReason } = useRole();
+  const [draft, setDraft] = useState<ContentPiece>(piece);
+  const editable = can("editContent");
+  const set = <K extends keyof ContentPiece>(key: K, value: ContentPiece[K]) => setDraft((d) => ({ ...d, [key]: value }));
+
+  const drive = draft.driveUrl ? parseDriveUrl(draft.driveUrl) : null;
+  const driveInvalid = (draft.driveUrl ?? "").trim().length > 0 && (drive === null || drive.kind === "unknown");
+  const product = products.find((p) => p.sku === draft.productSku);
+  const valid = draft.title.trim().length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(draft.scheduledFor) && !driveInvalid;
+
+  return <div className="modal-layer drawer-layer" role="dialog" aria-modal="true" aria-label={t("Butiran kandungan")}>
+    <aside className="drawer">
+      <div className="drawer-header"><div><p className="eyebrow">{isNew ? t("KANDUNGAN BAHARU") : t("BUTIRAN KANDUNGAN")}</p><h2>{draft.id}</h2></div><button className="modal-close" onClick={onClose}><X size={20} /></button></div>
+
+      <label className="settings-field"><small>{t("Tajuk")}</small>
+        <input className="settings-input" value={draft.title} onChange={(e) => set("title", e.target.value)} disabled={!editable} placeholder={t("Contoh: Resepi Nasi Mandi 15 minit")} />
+      </label>
+
+      <div className="booking-fields">
+        <label className="settings-field"><small>{t("Saluran")}</small>
+          <select className="settings-input" value={draft.channel} onChange={(e) => set("channel", e.target.value as ContentPiece["channel"])} disabled={!editable}>{CONTENT_CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+        </label>
+        <label className="settings-field"><small>{t("Format")}</small>
+          <select className="settings-input" value={draft.format} onChange={(e) => set("format", e.target.value as ContentPiece["format"])} disabled={!editable}>{CONTENT_FORMATS.map((f) => <option key={f} value={f}>{t(f)}</option>)}</select>
+        </label>
+      </div>
+
+      <div className="booking-fields">
+        <label className="settings-field"><small>{t("Tarikh terbit")}</small>
+          <input className="settings-input" type="date" value={draft.scheduledFor} onChange={(e) => set("scheduledFor", e.target.value)} disabled={!editable} />
+        </label>
+        <label className="settings-field"><small>{t("Status")}</small>
+          <select className="settings-input" value={draft.status} onChange={(e) => set("status", e.target.value as ContentStatus)} disabled={!editable && !can("approveContent")}>{CONTENT_STAGES.map((s) => <option key={s} value={s}>{t(s)}</option>)}</select>
+        </label>
+      </div>
+
+      <label className="settings-field"><small>{t("Produk berkaitan")}</small>
+        <select className="settings-input" value={draft.productSku ?? ""} onChange={(e) => set("productSku", e.target.value || null)} disabled={!editable}>
+          <option value="">{t("Tiada produk khusus")}</option>
+          {products.map((p) => <option key={p.sku} value={p.sku}>{p.name} · {p.weightLabel}</option>)}
+        </select>
+      </label>
+      {product && <div className="content-product-hint">
+        <span className="product-thumb" style={{ background: product.tone }}>{product.code}</span>
+        <span><strong>{product.name}</strong><small>{t("Stok")}: {product.stock} · {t("Terjual minggu ini")}: {product.soldThisWeek}</small></span>
+      </div>}
+
+      <label className="settings-field"><small>{t("Pautan Google Drive")}</small>
+        <input className="settings-input" value={draft.driveUrl ?? ""} onChange={(e) => set("driveUrl", e.target.value || null)} disabled={!editable} placeholder="https://drive.google.com/file/d/..." />
+      </label>
+      {driveInvalid && <p className="import-note">{t("Pautan Google Drive tidak sah")}</p>}
+      {drive?.embedUrl && <div className="drive-preview">
+        <iframe src={drive.embedUrl} title={draft.title} loading="lazy" />
+        <a className="secondary-button" href={drive.url} target="_blank" rel="noreferrer">{t("Buka di Drive")}<ExternalLink size={13} /></a>
+      </div>}
+
+      <label className="settings-field"><small>{t("Nota")}</small>
+        <textarea className="settings-input content-notes" value={draft.notes} onChange={(e) => set("notes", e.target.value)} disabled={!editable} rows={3} />
+      </label>
+
+      <div className="drawer-actions">
+        {!isNew && <button className="secondary-button" disabled={!editable} title={editable ? undefined : deniedReason} onClick={() => onDelete(draft.id)}>{t("Padam")}</button>}
+        <button className="primary-button" disabled={!valid || (!editable && !can("approveContent"))} title={editable || can("approveContent") ? undefined : deniedReason} onClick={() => onSave(draft)}>{t("Simpan")}</button>
+      </div>
+    </aside>
+  </div>;
 }
 
 const STOCK_LEVEL_CLASS = { out: "ship-failed", low: "ship-out", ok: "ship-delivered" } as const;

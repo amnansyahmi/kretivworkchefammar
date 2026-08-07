@@ -14,7 +14,7 @@
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
-    "test:unit": "node --import ./tests/register.mjs --test tests/csv.test.mjs tests/customers.test.mjs tests/inventory.test.mjs tests/notifications.test.mjs"
+    "test:unit": "node --import ./tests/register.mjs --test tests/csv.test.mjs tests/customers.test.mjs tests/inventory.test.mjs tests/notifications.test.mjs tests/content.test.mjs"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.5.1",
