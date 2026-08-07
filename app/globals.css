@@ -753,9 +753,104 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
 .booking-quote span { font-size: 10px; color: var(--muted); }
 .booking-quote strong { font-family: var(--font-mono); font-size: 18px; color: var(--ink); }
 
+/* --- Content board --- */
+.content-board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; padding: 4px 0 2px; }
+.content-column { display: flex; flex-direction: column; min-width: 0; }
+.content-column-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 9px; border-bottom: 1px solid var(--line); margin-bottom: 9px; }
+.content-column-head strong { font-size: 10px; font-weight: 750; letter-spacing: 0.02em; color: var(--ink-soft); }
+.content-column-head span { font-family: var(--font-mono); font-size: 9px; color: var(--muted); background: var(--surface-alt); border-radius: 99px; padding: 2px 7px; }
+.content-column-body { display: flex; flex-direction: column; gap: 8px; }
+.content-column-empty { margin: 0; padding: 14px 4px; font-size: 9px; color: var(--muted-dim); text-align: center; border: 1px dashed var(--line); border-radius: var(--radius-xs); }
+.content-card {
+  display: flex; flex-direction: column; gap: 7px; width: 100%; padding: 11px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface);
+  text-align: left; cursor: pointer; box-shadow: var(--shadow-xs);
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out), transform 150ms var(--ease-out);
+}
+.content-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.content-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.content-card.is-late { border-left: 3px solid var(--danger); }
+.content-card-top { display: flex; align-items: center; gap: 6px; }
+.content-card-top small { font-size: 8px; font-weight: 700; letter-spacing: 0.02em; color: var(--muted); text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.content-channel-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.content-card-link { color: var(--muted-dim); margin-left: auto; flex-shrink: 0; }
+.content-card > strong { font-size: 11px; line-height: 1.4; color: var(--ink); }
+.content-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
+.content-card-meta small { font-family: var(--font-mono); font-size: 8px; color: var(--muted); }
+.content-card-meta .is-late-text { color: var(--danger); font-weight: 700; }
+.product-thumb.tiny { width: 20px; height: 20px; font-size: 7px; border-radius: 5px; flex-shrink: 0; }
+.content-product-hint { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: center; margin-top: 9px; padding: 10px 12px; background: var(--surface-alt); border-radius: var(--radius-xs); }
+.content-product-hint strong { display: block; font-size: 11px; color: var(--ink); }
+.content-product-hint small { display: block; font-size: 9px; color: var(--muted); margin-top: 2px; }
+textarea.content-notes { resize: vertical; min-height: 62px; line-height: 1.5; font-family: inherit; }
+select.settings-input { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 16px) 17px, calc(100% - 11px) 17px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 32px; cursor: pointer; }
+.settings-input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* --- Content calendar --- */
+.calendar-nav { display: flex; align-items: center; gap: 6px; }
+.calendar-nav strong { font-size: 14px; color: var(--ink); min-width: 132px; }
+.cal-arrow { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-xs); background: var(--surface); color: var(--ink-soft); cursor: pointer; }
+.cal-arrow:hover { border-color: var(--line-strong); background: var(--surface-hover); }
+.cal-today { height: 30px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--radius-xs); background: var(--surface); font-size: 10px; font-weight: 700; color: var(--ink-soft); cursor: pointer; margin-left: 3px; }
+.cal-today:hover { border-color: var(--line-strong); background: var(--surface-hover); }
+.cal-legend { display: inline-flex; align-items: center; gap: 6px; font-size: 9px; color: var(--muted); white-space: nowrap; }
+.cal-legend i { width: 9px; height: 9px; border-radius: 3px; }
+.cal-legend .legend-shoot { background: var(--violet); }
+.cal-legend .legend-live { background: var(--teal); }
+
+.calendar-scroll { overflow-x: auto; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.cal-weekday { background: var(--surface-alt); padding: 9px 8px; font-size: 9px; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); text-align: center; }
+.cal-cell { background: var(--surface); min-height: 104px; padding: 7px; display: flex; flex-direction: column; gap: 5px; }
+.cal-cell.is-outside { background: var(--surface-alt); }
+.cal-cell.is-outside .cal-daynum { color: var(--muted-dim); }
+.cal-cell.is-weekend:not(.is-outside) { background: color-mix(in srgb, var(--surface-alt) 45%, var(--surface)); }
+.cal-cell.is-today { box-shadow: inset 0 0 0 2px var(--primary); }
+.cal-daynum { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--ink-soft); }
+.cal-cell.is-today .cal-daynum { color: var(--primary); }
+.cal-events { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cal-event {
+  display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px 6px;
+  border: 0; border-radius: 5px; text-align: left; cursor: pointer;
+  font-size: 9px; line-height: 1.3; min-width: 0;
+}
+.cal-event span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-event i { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.cal-event svg { flex-shrink: 0; }
+.cal-event.is-shoot { background: var(--violet-soft); color: var(--violet); font-weight: 700; }
+.cal-event.is-shoot:hover { filter: brightness(0.96); }
+.cal-event.is-shoot.tone-pending { background: var(--surface-alt); color: var(--muted); }
+.cal-event.is-shoot.tone-done { background: var(--success-soft); color: var(--success-hover); }
+.cal-event.is-shoot.tone-cancelled { background: var(--danger-soft); color: var(--danger); text-decoration: line-through; }
+.cal-event.is-live { background: var(--surface-alt); color: var(--ink-soft); }
+.cal-event.is-live:hover { background: var(--surface-hover); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.cal-hint { margin: 11px 0 0; font-size: 9px; color: var(--muted); }
+
+/* --- Drive embeds --- */
+.drive-actions { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+.drive-panel { padding-bottom: 16px; }
+.drive-frame { width: 100%; height: 460px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-alt); }
+.drive-hint { margin: 10px 0 0; font-size: 9px; color: var(--muted); }
+.drive-preview { margin-top: 10px; display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
+.drive-preview iframe { width: 100%; height: 260px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-alt); }
+
+@media (max-width: 1100px) {
+  .content-board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 @media (max-width: 640px) {
   .courier-picker, .booking-fields { grid-template-columns: 1fr; }
   .notification-panel { position: fixed; top: 62px; right: 16px; left: 16px; width: auto; }
+  .content-board { grid-template-columns: 1fr; }
+  .content-column-body { flex-direction: row; overflow-x: auto; padding-bottom: 6px; }
+  .content-column-body > .content-card { min-width: 200px; }
+  .content-column-empty { min-width: 120px; }
+  .drive-frame { height: 340px; }
+  /* The month grid can't usefully shrink below 7 columns, so let it scroll. */
+  .calendar-grid { min-width: 620px; }
+  .calendar-nav strong { min-width: auto; font-size: 12px; }
+  .cal-cell { min-height: 78px; }
+  .cal-legend { display: none; }
 }
 
 .product-cell { display: flex; align-items: center; gap: 9px; min-width: 225px; }
@@ -1010,8 +1105,11 @@ tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px
    inside .settings-panel. Declared after `.settings-panel input` so it wins
    the equal-specificity tie there. */
 .settings-field small { display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-input.settings-input { display: block; width: 100%; height: auto; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface-alt); border-radius: var(--radius-xs); font-size: 12px; font-weight: 600; color: var(--ink); }
-input.settings-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+/* Each selector is listed explicitly rather than using a bare `.settings-input`
+   so it ties with `.settings-panel input` on specificity and wins by order —
+   a bare class would lose inside a settings panel. */
+input.settings-input, select.settings-input, textarea.settings-input { display: block; width: 100%; height: auto; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface-alt); border-radius: var(--radius-xs); font-size: 12px; font-weight: 600; color: var(--ink); }
+input.settings-input:focus, select.settings-input:focus, textarea.settings-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 .qr-upload-row { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
 .qr-upload-preview { width: 56px; height: 56px; border-radius: var(--radius-xs); border: 1px solid var(--line); object-fit: contain; background: white; }
 .qr-upload-row input[type="file"] { font-size: 10px; color: var(--muted); flex: 1; min-width: 0; }
@@ -1265,7 +1363,7 @@ input.settings-input:focus { outline: 2px solid var(--primary); outline-offset: 
   .mobile-bottom-nav {
     position: fixed;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     left: 0;
     right: 0;
     bottom: 0;

@@ -22,6 +22,20 @@
       "when": 1786074467949,
       "tag": "0002_curved_silver_fox",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786081542917,
+      "tag": "0003_large_lockjaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786082712933,
+      "tag": "0004_special_captain_stacy",
+      "breakpoints": true
     }
   ]
 }

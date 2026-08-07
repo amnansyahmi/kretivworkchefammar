@@ -14,14 +14,18 @@ export type Permission =
   | "editSettings"       // commission rate, payment method, integrations
   | "importOrders"       // bring in order CSVs
   | "bookShipment"       // create a courier booking
-  | "adjustStock";       // change inventory counts
+  | "adjustStock"        // change inventory counts
+  | "editContent"        // add/edit items on the content board
+  | "approveContent";    // sign off content before it is scheduled
 
 // KretivWork runs the operation and bills for it; Chef Ammar is the brand
 // owner who approves what he is billed. Approval sits with Chef Ammar
 // precisely so the party raising the invoice cannot also sign it off.
+// Content follows the same split as commission: KretivWork produces it,
+// Chef Ammar signs it off, since it goes out under his brand.
 const PERMISSIONS: Record<Role, Permission[]> = {
-  KretivWork: ["recordPayment", "editSettings", "importOrders", "bookShipment", "adjustStock"],
-  "Chef Ammar": ["approveStatement"],
+  KretivWork: ["recordPayment", "editSettings", "importOrders", "bookShipment", "adjustStock", "editContent"],
+  "Chef Ammar": ["approveStatement", "approveContent"],
 };
 
 export function can(role: Role, permission: Permission): boolean {
