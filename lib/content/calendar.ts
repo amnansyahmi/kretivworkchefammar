@@ -67,6 +67,20 @@ export function monthLabelBM(year: number, month: number): string {
   return `${MONTH_NAMES_BM[month]} ${year}`;
 }
 
+/** Splits a YYYY-MM-DD string. Returns null when it isn't one. */
+export function parseIsoDate(iso: string): { year: number; month: number; day: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? "");
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  if (month < 0 || month > 11 || day < 1 || day > 31) return null;
+  // Reject impossible days like 2026-02-31, which Date would roll forward.
+  const probe = new Date(year, month, day);
+  if (probe.getFullYear() !== year || probe.getMonth() !== month || probe.getDate() !== day) return null;
+  return { year, month, day };
+}
+
 /** Groups any dated records by their YYYY-MM-DD, for O(1) lookup per cell. */
 export function groupByDate<T>(items: T[], dateOf: (item: T) => string): Map<string, T[]> {
   const map = new Map<string, T[]>();
