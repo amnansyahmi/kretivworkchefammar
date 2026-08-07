@@ -25,6 +25,16 @@ export const campaigns = pgTable("campaigns", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Stock adjustments made from Jualan > Produk. Only SKUs that have been
+// adjusted get a row; anything absent falls back to the seeded catalogue
+// level in lib/inventory/mock-products.ts.
+export const stockLevels = pgTable("stock_levels", {
+  sku: text("sku").primaryKey(),
+  stock: integer("stock").notNull(),
+  reorderLevel: integer("reorder_level").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Bank details and QR code shown in the "Payment ke KretivCo" card,
 // editable by the KretivCo team from Tetapan > Kaedah pembayaran.
 // qrImageDataUrl is a base64 data URL of an uploaded QR image; null

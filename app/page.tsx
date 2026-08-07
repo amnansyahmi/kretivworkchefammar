@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LoaderCircle,
   Menu,
+  Pencil,
   RefreshCw,
   Search,
   Settings,
@@ -20,7 +21,7 @@ import {
 } from "lucide-react";
 import { SiShopee, SiTiktok } from "react-icons/si";
 import { QRCodeSVG } from "qrcode.react";
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { CourierKey, DataSourceKey } from "../lib/config";
 import { mockOrders } from "../lib/sources/mock-orders";
 import type { Order } from "../lib/sources/types";
@@ -30,6 +31,15 @@ import { SHIPMENT_STAGES, type Shipment } from "../lib/logistics/types";
 import type { CourierSourceStatus } from "../lib/logistics";
 import { StatementPdfDocument, InvoicePdfDocument } from "../lib/pdf/documents";
 import { downloadPdf } from "../lib/pdf/download";
+import { downloadCsv } from "../lib/csv";
+import { importOrdersFromCsv, type ImportResult } from "../lib/csv/import-orders";
+import { can as roleCan, deniedReason, type Permission, type Role } from "../lib/roles";
+import { mockProducts } from "../lib/inventory/mock-products";
+import { stockLevelOf, weeksOfCover, type Product } from "../lib/inventory/types";
+import { aggregateCustomers, summariseCustomers, type Customer } from "../lib/customers";
+import { deriveNotifications, type AppNotification } from "../lib/notifications";
+import { quoteFor } from "../lib/logistics/booking";
+import type { CourierName } from "../lib/logistics/types";
 
 type Lang = "bm" | "en";
 
@@ -138,6 +148,48 @@ const EN: Record<string, string> = {
   "Muat naik CSV daripada Shopee atau TikTok Shop. Pesanan pendua akan disemak secara automatik.": "Upload a CSV from Shopee or TikTok Shop. Duplicate orders are checked automatically.",
   "Pilih fail": "Choose file", "atau tarik dan lepaskan di sini": "or drag and drop here", "Batal": "Cancel",
   "Fail berjaya diimport dan sedang diproses": "File imported successfully and is being processed",
+  "baris dieksport ke CSV": "rows exported to CSV", "pesanan berjaya diimport": "orders imported successfully",
+  "Membaca fail…": "Reading file…", "Lajur wajib tidak dijumpai": "Required columns not found",
+  "Fail perlu ada lajur": "The file needs these columns",
+  "pesanan baharu": "new orders", "pendua dilangkau": "duplicates skipped", "baris tidak sah": "invalid rows",
+  "Baris": "Rows", "Medan wajib kosong": "Required field empty", "Jumlah tidak sah": "Invalid amount",
+  "Belum ada penghantaran untuk pesanan ini.": "No shipment booked for this order yet.",
+  "Hanya pasukan KretivWork boleh buat tindakan ini.": "Only the KretivWork team can do this.",
+  "Hanya Chef Ammar boleh buat tindakan ini.": "Only Chef Ammar can do this.",
+
+  // Inventory
+  "Inventori": "Inventory", "Inventori produk": "Product inventory",
+  "Paras stok dan kadar jualan setiap SKU.": "Stock levels and sell-through per SKU.",
+  "Nilai stok": "Stock value", "unit dalam stok": "units in stock",
+  "SKU perlu perhatian": "SKUs needing attention", "Habis atau bawah paras pesanan semula": "Out of stock or below reorder level",
+  "Unit terjual": "Units sold", "Jumlah SKU": "Total SKUs",
+  "HARGA": "PRICE", "STOK": "STOCK", "PARAS SEMULA": "REORDER AT", "TERJUAL": "SOLD", "LIPUTAN": "COVER",
+  "minggu": "weeks", "Habis": "Out of stock", "Rendah": "Low", "Mencukupi": "Healthy",
+  "Laras stok": "Adjust stock", "Simpan": "Save", "Menyimpan…": "Saving…",
+  "Masukkan nombor bulat yang sah": "Enter a valid whole number",
+  "Paras stok disimpan": "Stock level saved",
+  "Paras stok dikemas kini (tidak kekal tanpa pangkalan data)": "Stock level updated (not persisted without a database)",
+  "Gagal menyimpan paras stok": "Failed to save stock level",
+
+  // Customers
+  "Jumlah pelanggan": "Total customers", "Daripada pesanan yang direkod": "From recorded orders",
+  "Pelanggan berulang": "Repeat customers", "kadar pembelian berulang": "repeat purchase rate",
+  "Purata nilai sepanjang hayat": "Average lifetime value", "Setiap pelanggan": "Per customer",
+  "Pelanggan teratas": "Top customer", "pelanggan ditemui": "customers found",
+  "NILAI SEPANJANG HAYAT": "LIFETIME VALUE", "PURATA": "AVERAGE", "SALURAN UTAMA": "TOP CHANNEL",
+  "PESANAN TERAKHIR": "LAST ORDER", "Tiada pelanggan": "No customers", "Ubah carian anda.": "Change your search.",
+
+  // Notifications
+  "Penghantaran gagal": "Delivery failed", "Stok habis": "Out of stock", "Stok rendah": "Low stock",
+  "Penyata menunggu kelulusan": "Statement awaiting approval",
+  "Penyata komisen minggu ini belum diluluskan.": "This week's commission statement has not been approved.",
+  "Ralat sambungan kurier": "Courier connection error",
+  "Menunggu pickup kurier": "Awaiting courier pickup",
+
+  // Shipment booking
+  "TEMPAH PENGHANTARAN": "BOOK SHIPMENT", "Tempah penghantaran": "Book shipment", "Tempah AWB untuk": "Book an AWB for",
+  "Anggaran kos": "Estimated cost", "Menempah…": "Booking…", "Tempahan gagal": "Booking failed",
+  "Poskod mesti 5 digit": "Postcode must be 5 digits", "Penghantaran ditempah": "Shipment booked",
   "BUTIRAN PESANAN": "ORDER DETAILS", "Butiran pesanan": "Order details", "Produk": "Product", "Pelanggan": "Customer",
   "Nama": "Name", "Punca": "Source",
   "Status": "Status", "Bayaran diterima": "Payment received", "Transaksi disahkan": "Transaction confirmed",
@@ -171,6 +223,17 @@ const EN: Record<string, string> = {
 const LangContext = createContext<{ lang: Lang; t: (s: string) => string }>({ lang: "bm", t: (s) => s });
 function useLang() {
   return useContext(LangContext);
+}
+
+// Role gating for the UI only — see lib/roles.ts. Provided via context so the
+// deeply nested finance/settings views don't each need a `role` prop.
+const RoleContext = createContext<{ role: Role; can: (p: Permission) => boolean; deniedReason: string }>({
+  role: "KretivWork",
+  can: () => true,
+  deniedReason: "",
+});
+function useRole() {
+  return useContext(RoleContext);
 }
 
 const orders: Order[] = mockOrders;
@@ -448,9 +511,24 @@ export default function Home() {
   const t = (s: string) => (lang === "en" ? EN[s] ?? s : s);
   const [liveOrders, setLiveOrders] = useState<Order[] | null>(null);
   const [sourceStatus, setSourceStatus] = useState<Record<DataSourceKey, SourceStatus> | null>(null);
+  const [importedOrders, setImportedOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [savingSku, setSavingSku] = useState<string | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [bookingOrder, setBookingOrder] = useState<Order | null>(null);
+  const [bookedShipments, setBookedShipments] = useState<Shipment[]>([]);
   const [liveShipments, setLiveShipments] = useState<Shipment[] | null>(null);
   const [courierStatus, setCourierStatus] = useState<Record<CourierKey, CourierSourceStatus> | null>(null);
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/products")
+      .then((res) => res.json())
+      .then((data: { products: Product[] }) => { if (!cancelled) setProducts(data.products); })
+      .catch((err) => console.error("Failed to load products", err));
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -478,8 +556,46 @@ export default function Home() {
     return () => { cancelled = true; };
   }, []);
 
-  const orderList = liveOrders ?? orders;
-  const shipmentList = liveShipments ?? mockShipments;
+  // CSV-imported orders live in front of the fetched list until a real
+  // write-back to the source platform exists.
+  const orderList = useMemo(() => [...importedOrders, ...(liveOrders ?? orders)], [importedOrders, liveOrders, orders]);
+  const shipmentList = useMemo(() => [...bookedShipments, ...(liveShipments ?? mockShipments)], [bookedShipments, liveShipments]);
+
+  const saveStock = (sku: string, stock: number, reorderLevel: number) => {
+    setSavingSku(sku);
+    setProducts((current) => current.map((p) => (p.sku === sku ? { ...p, stock, reorderLevel } : p)));
+    fetch("/api/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sku, stock, reorderLevel }),
+    })
+      .then((res) => res.json())
+      .then((data: { persisted: boolean }) => notify(t(data.persisted ? "Paras stok disimpan" : "Paras stok dikemas kini (tidak kekal tanpa pangkalan data)")))
+      .catch((err) => { console.error("Failed to save stock level", err); notify(t("Gagal menyimpan paras stok")); })
+      .finally(() => setSavingSku(null));
+  };
+
+  const notifications = useMemo(() => deriveNotifications({
+    shipments: shipmentList,
+    products,
+    sourceStatus,
+    courierStatus,
+    statementApproved: approved,
+    canApproveStatement: roleCan(role, "approveStatement"),
+  }), [shipmentList, products, sourceStatus, courierStatus, approved, role]);
+
+  const bookShipmentFor = async (order: Order, courier: CourierName, weightKg: number, destination: string, postcode: string) => {
+    const res = await fetch("/api/shipments/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, recipient: order.customer, initials: order.initials, destination, postcode, weightKg, courier }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Booking failed");
+    setBookedShipments((current) => [data.shipment as Shipment, ...current]);
+    setBookingOrder(null);
+    notify(`${t("Penghantaran ditempah")} · ${(data.shipment as Shipment).trackingNo}`);
+  };
   const filteredOrders = useMemo(() => orderList.filter((order) => {
     const matchesQuery = `${order.id} ${order.customer} ${order.item} ${order.channel} ${order.payment}`.toLowerCase().includes(query.toLowerCase());
     return matchesQuery && (status === "Semua status" || order.status === status);
@@ -565,6 +681,7 @@ export default function Home() {
 
   return (
     <LangContext.Provider value={{ lang, t }}>
+    <RoleContext.Provider value={{ role, can: (p) => roleCan(role, p), deniedReason: t(deniedReason(role)) }}>
     <main className="app-shell">
       <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
         <div className="brand">
@@ -610,7 +727,26 @@ export default function Home() {
               <span className={role === "Chef Ammar" ? "chef-dot" : "kw-dot"}>{role === "Chef Ammar" ? "CA" : "KW"}</span>
               {t("Pandangan")}: {role}<ChevronDown size={15} />
             </button>
-            <button className="icon-button" onClick={() => notify(t("Tiada notifikasi baharu"))} aria-label={t("Notifikasi")}><Bell size={19} /><i /></button>
+            <div className="notification-wrap">
+              <button className="icon-button" onClick={() => setNotifOpen((v) => !v)} aria-label={t("Notifikasi")} aria-expanded={notifOpen}>
+                <Bell size={19} />
+                {notifications.length > 0 && <i className="notification-badge">{notifications.length}</i>}
+              </button>
+              {notifOpen && <NotificationPanel
+                notifications={notifications}
+                onClose={() => setNotifOpen(false)}
+                onSelect={(n) => {
+                  setNotifOpen(false);
+                  setActive(n.target.view);
+                  if (n.target.tab) {
+                    if (n.target.view === "sales") setSalesTab(n.target.tab);
+                    if (n.target.view === "logistics") setLogisticsTab(n.target.tab);
+                    if (n.target.view === "finance") setFinanceTab(n.target.tab);
+                    if (n.target.view === "settings") setSettingsTab(n.target.tab);
+                  }
+                }}
+              />}
+            </div>
           </div>
         </header>
 
@@ -622,7 +758,7 @@ export default function Home() {
             </div>
             <div className="heading-actions">
               <Dropdown className="period-dropdown" value={period} onChange={setPeriod} options={["Minggu ini", "Minggu lepas", "Bulan ini"].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Tempoh laporan")} />
-              <button className="secondary-button" onClick={() => setImportOpen(true)}>{t("Import")}</button>
+              <GatedButton permission="importOrders" className="secondary-button" onClick={() => setImportOpen(true)}>{t("Import")}</GatedButton>
               <button className="primary-button" onClick={() => setOpenStatementWeek(0)}>{t("Penyata")}</button>
             </div>
           </section>
@@ -749,8 +885,10 @@ export default function Home() {
           )}
 
           {active === "sales" && <>
-            <SectionTabs value={salesTab} onChange={setSalesTab} tabs={[{ id: "orders", label: "Pesanan" }, { id: "channels", label: "Saluran" }, { id: "sources", label: "Sumber" }]} />
+            <SectionTabs value={salesTab} onChange={setSalesTab} tabs={[{ id: "orders", label: "Pesanan" }, { id: "products", label: "Inventori" }, { id: "customers", label: "Pelanggan" }, { id: "channels", label: "Saluran" }, { id: "sources", label: "Sumber" }]} />
             {salesTab === "orders" && <OrdersPanel orders={filteredOrders} query={query} setQuery={setQuery} status={status} setStatus={setStatus} expanded notify={notify} onSelectOrder={setSelectedOrder} />}
+            {salesTab === "products" && <ProductsView products={products} saving={savingSku} onSaveStock={saveStock} notify={notify} />}
+            {salesTab === "customers" && <CustomersView orders={orderList} onOpenOrder={setSelectedOrder} />}
             {salesTab === "channels" && <ChannelsView notify={notify} />}
             {salesTab === "sources" && <AttributionView onOpenOrders={openOrdersFor} />}
           </>}
@@ -777,16 +915,54 @@ export default function Home() {
         {nav.map(({ id, label, icon: Icon }) => <button key={id} className={active === id ? "active" : ""} onClick={() => setActive(id)}><Icon size={19} /><span>{t(label)}</span></button>)}
       </nav>
 
-      {importOpen && <ImportModal onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); notify(t("Fail berjaya diimport dan sedang diproses")); }} />}
-      {openStatementWeek !== null && <StatementDrawer weekIndex={openStatementWeek} role={role} approved={approved} paid={paymentStatus === "paid"} onClose={() => setOpenStatementWeek(null)} onApprove={() => { setApproved(true); setPaymentStatus("approved"); setOpenStatementWeek(null); notify(t("Penyata telah diluluskan")); }} />}
-      {selectedOrder && <OrderDrawer order={selectedOrder} onClose={() => setSelectedOrder(null)} notify={notify} />}
-      {selectedShipment && <ShipmentDrawer shipment={selectedShipment} onClose={() => setSelectedShipment(null)} notify={notify} />}
+      {importOpen && <ImportModal existingIds={orderList.map((o) => o.id)} onClose={() => setImportOpen(false)} onImport={(imported) => {
+        setImportedOrders((current) => [...imported, ...current]);
+        setImportOpen(false);
+        notify(`${imported.length} ${t("pesanan berjaya diimport")}`);
+      }} />}
+      {openStatementWeek !== null && <StatementDrawer weekIndex={openStatementWeek} approved={approved} paid={paymentStatus === "paid"} onClose={() => setOpenStatementWeek(null)} onApprove={() => { setApproved(true); setPaymentStatus("approved"); setOpenStatementWeek(null); notify(t("Penyata telah diluluskan")); }} />}
+      {selectedOrder && <OrderDrawer
+        order={selectedOrder}
+        shipment={shipmentList.find((s) => s.orderId === selectedOrder.id) ?? null}
+        onClose={() => setSelectedOrder(null)}
+        onOpenShipment={(shipment) => { setSelectedOrder(null); setActive("logistics"); setLogisticsTab("shipments"); setSelectedShipment(shipment); }}
+        onBookShipment={() => { setBookingOrder(selectedOrder); setSelectedOrder(null); }}
+        notify={notify}
+      />}
+      {bookingOrder && <BookShipmentModal
+        order={bookingOrder}
+        onClose={() => setBookingOrder(null)}
+        onBook={(courier, weightKg, destination, postcode) => bookShipmentFor(bookingOrder, courier, weightKg, destination, postcode)}
+      />}
+      {selectedShipment && <ShipmentDrawer
+        shipment={selectedShipment}
+        order={orderList.find((o) => o.id === selectedShipment.orderId) ?? null}
+        onClose={() => setSelectedShipment(null)}
+        onOpenOrder={(order) => { setSelectedShipment(null); setActive("sales"); setSalesTab("orders"); setSelectedOrder(order); }}
+        notify={notify}
+      />}
       {financeDocument === "invoice" && <FinanceDocumentDrawer type="invoice" paymentStatus={paymentStatus} onClose={() => setFinanceDocument(null)} onPay={() => { setApproved(true); setPaymentStatus("paid"); notify(t("Bayaran dummy ke KretivCo direkodkan.")); }} />}
       {financeDocument === "receipt" && <FinanceDocumentDrawer type="receipt" paymentStatus={paymentStatus} onClose={() => setFinanceDocument(null)} onPay={() => { setApproved(true); setPaymentStatus("paid"); notify(t("Bayaran dummy ke KretivCo direkodkan.")); }} />}
       {toast && <div className="toast"><span className="toast-dot" />{toast}</div>}
     </main>
+    </RoleContext.Provider>
     </LangContext.Provider>
   );
+}
+
+/**
+ * Wraps an action button so a role without the permission sees it disabled
+ * with an explanatory tooltip rather than the button silently vanishing.
+ */
+function GatedButton({ permission, className, onClick, disabled, children }: { permission: Permission; className: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  const { can, deniedReason } = useRole();
+  const allowed = can(permission);
+  return <button
+    className={className}
+    onClick={allowed ? onClick : undefined}
+    disabled={disabled || !allowed}
+    title={allowed ? undefined : deniedReason}
+  >{children}</button>;
 }
 
 function SectionTabs({ value, onChange, tabs }: { value: string; onChange: (value: string) => void; tabs: { id: string; label: string }[] }) {
@@ -815,7 +991,14 @@ function OrdersPanel({ orders, query, setQuery, status, setStatus, expanded, not
       <Dropdown className="filter-select" value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={["Semua status", "Selesai", "Diproses", "Refund"].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Tapis status")} />
       <Dropdown className="filter-select compact-select" value={channel} onChange={(v) => { setChannel(v); setPage(1); }} options={["Semua saluran", "BCL.my", "Shopee", "TikTok Shop"].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Tapis saluran")} />
       <Dropdown className="filter-select compact-select" value={sort} onChange={setSort} options={[{ value: "latest", label: t("Terkini") }, { value: "highest", label: t("Nilai tertinggi") }, { value: "lowest", label: t("Nilai terendah") }]} ariaLabel={t("Susun ikut")} />
-      <button className="export-button" onClick={() => notify(t("Fail CSV sedang disediakan"))}><Download size={14} /><span>{t("Export")}</span></button>
+      <button className="export-button" onClick={() => {
+        downloadCsv(
+          `pesanan-${new Date().toISOString().slice(0, 10)}.csv`,
+          ["Order ID", "Masa", "Pelanggan", "Saluran", "Produk", "Bayaran", "Jumlah (RM)", "Status"],
+          sortedOrders.map((o) => [o.id, o.time, o.customer, o.channel, o.item, o.payment, o.amount.toFixed(2), o.status]),
+        );
+        notify(`${sortedOrders.length} ${t("baris dieksport ke CSV")}`);
+      }} disabled={sortedOrders.length === 0}><Download size={14} /><span>{t("Export")}</span></button>
     </div></div>
     <div className="table-wrap"><table><thead><tr><th>{t("PESANAN")}</th><th>{t("PELANGGAN")}</th><th>{t("SALURAN")}</th><th>{t("PRODUK")}</th><th>{t("JUMLAH")}</th><th>{t("STATUS")}</th><th /></tr></thead><tbody>{visibleOrders.map((order) => <tr key={order.id} tabIndex={0} onClick={() => onSelectOrder(order)} onKeyDown={(e) => { if (e.key === "Enter") onSelectOrder(order); }}><td><strong>{order.id}</strong><small>{order.time}</small></td><td><div className="customer"><span>{order.initials}</span><strong>{order.customer}</strong></div></td><td><span className={`channel-tag ${order.channel.split(".")[0].toLowerCase().replace(" shop", "")}`}>{order.channel}</span></td><td><div className="product-cell"><span className="product-thumb" style={{ background: order.productTone }}>{order.productCode}</span><span><strong>{order.item}</strong><small>Chef Ammar™ Arabic Spices</small></span></div></td><td><strong>{currency(order.amount)}</strong></td><td><StatusBadge status={order.status} /></td><td><button className="row-menu" aria-label={`${t("Buka")} ${order.id}`} onClick={(e) => { e.stopPropagation(); onSelectOrder(order); }}><ChevronRight size={17} /></button></td></tr>)}</tbody></table>{sortedOrders.length === 0 && <div className="empty-state"><Search size={28} /><strong>{t("Tiada pesanan")}</strong><span>{t("Ubah carian atau filter.")}</span><button onClick={() => { setQuery(""); setStatus("Semua status"); setChannel("Semua saluran"); }}>{t("Kosongkan filter")}</button></div>}</div>
     {sortedOrders.length > 0 && <div className="table-pagination"><span>{t("Menunjukkan")} {(page - 1) * perPage + 1}–{Math.min(page * perPage, sortedOrders.length)} {t("daripada")} {sortedOrders.length}</span><div><button disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label={t("Halaman sebelumnya")}><ChevronLeft size={15} /></button><b>{page} / {totalPages}</b><button disabled={page === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} aria-label={t("Halaman seterusnya")}><ChevronRight size={15} /></button></div></div>}
@@ -1042,7 +1225,11 @@ function CommissionStudio({ paymentStatus, payMethod, setPayMethod, paymentSetti
       </div>
       <div className="commission-actions">
         <button className="secondary-button" onClick={() => onOpenDocument("invoice")}>Preview invoice</button>
-        <button className="primary-button" onClick={paid ? () => onOpenDocument("receipt") : approved ? onPay : onApprove}>{paid ? t("Lihat resit") : approved ? "Pay KretivCo" : "Approve invoice"}</button>
+        {paid
+          ? <button className="primary-button" onClick={() => onOpenDocument("receipt")}>{t("Lihat resit")}</button>
+          : approved
+            ? <GatedButton permission="recordPayment" className="primary-button" onClick={onPay}>Pay KretivCo</GatedButton>
+            : <GatedButton permission="approveStatement" className="primary-button" onClick={onApprove}>Approve invoice</GatedButton>}
       </div>
     </article>
 
@@ -1070,7 +1257,7 @@ function CommissionStudio({ paymentStatus, payMethod, setPayMethod, paymentSetti
       <article className="panel invoice-card">
         <div className="panel-heading"><div><h3>{t("Payment ke KretivCo")}</h3><p>{t("Rekod bayaran dummy untuk test flow")}</p></div><span className={paid ? "approved-pill" : "review-pill"}>{paid ? "Paid" : "Unpaid"}</span></div>
         <PaymentMethodBox payMethod={payMethod} setPayMethod={setPayMethod} reference={commissionWeek.reference} amount={commissionWeek.commission} settings={paymentSettings} />
-        <button className="full-button" disabled={paid} onClick={onPay}>{paid ? t("Bayaran telah direkod") : "Pay KretivCo (dummy)"}</button>
+        <GatedButton permission="recordPayment" className="full-button" disabled={paid} onClick={onPay}>{paid ? t("Bayaran telah direkod") : "Pay KretivCo (dummy)"}</GatedButton>
       </article>
     </div>
   </section>;
@@ -1088,7 +1275,7 @@ function StatementsView({ approved, paid, onOpenWeek }: { approved: boolean; pai
 function PaymentsView({ paymentStatus, payMethod, setPayMethod, paymentSettings, onPay, onOpenReceipt }: { paymentStatus: PaymentStatus; payMethod: "bank" | "qr"; setPayMethod: (v: "bank" | "qr") => void; paymentSettings: PaymentSettings; onPay: () => void; onOpenReceipt: () => void }) {
   const { t } = useLang();
   const paid = paymentStatus === "paid";
-  return <section className="view-stack"><div className="metrics-grid payments-metrics"><article className="metric metric-featured"><p>{t("Jumlah telah dibayar")}</p><h2>{paid ? "RM11,732.09" : "RM8,920.16"}</h2><small>{paid ? t("4 pembayaran termasuk minggu ini") : t("3 pembayaran terdahulu")}</small></article><article className="metric"><p>{paid ? t("Bayaran minggu ini") : t("Menunggu bayaran")}</p><h2>{currency(commissionWeek.commission)}</h2><small>{commissionWeek.invoiceNo}</small></article><article className="metric"><p>{t("Rujukan")}</p><h2>{paid ? "Paid" : "22 Jul"}</h2><small>{paid ? commissionWeek.receiptNo : t("Tarikh bayaran seterusnya")}</small></article></div><article className="panel payment-flow-card"><div><h3>{t("Aliran pembayaran")}</h3><p>{t("Bayaran dibuat selepas invoice komisen diluluskan oleh Chef Ammar.")}</p></div><div className="payment-steps"><span className="complete"><b>1</b>{t("Jualan selesai")}</span><i /><span className="complete"><b>2</b>{t("Invoice dijana")}</span><i /><span className="complete"><b>3</b>{t("Kelulusan Chef")}</span><i /><span className={paid ? "complete" : "active"}><b>4</b>{paid ? t("Resit tersedia") : t("Bayaran")}</span></div><PaymentMethodBox payMethod={payMethod} setPayMethod={setPayMethod} reference={commissionWeek.reference} amount={commissionWeek.commission} settings={paymentSettings} /><div className="payment-actions"><button className="secondary-button" onClick={onOpenReceipt} disabled={!paid}>{t("Preview resit")}</button><button className="primary-button" onClick={onPay} disabled={paid}>{paid ? t("Sudah dibayar") : "Pay KretivCo (dummy)"}</button></div></article></section>;
+  return <section className="view-stack"><div className="metrics-grid payments-metrics"><article className="metric metric-featured"><p>{t("Jumlah telah dibayar")}</p><h2>{paid ? "RM11,732.09" : "RM8,920.16"}</h2><small>{paid ? t("4 pembayaran termasuk minggu ini") : t("3 pembayaran terdahulu")}</small></article><article className="metric"><p>{paid ? t("Bayaran minggu ini") : t("Menunggu bayaran")}</p><h2>{currency(commissionWeek.commission)}</h2><small>{commissionWeek.invoiceNo}</small></article><article className="metric"><p>{t("Rujukan")}</p><h2>{paid ? "Paid" : "22 Jul"}</h2><small>{paid ? commissionWeek.receiptNo : t("Tarikh bayaran seterusnya")}</small></article></div><article className="panel payment-flow-card"><div><h3>{t("Aliran pembayaran")}</h3><p>{t("Bayaran dibuat selepas invoice komisen diluluskan oleh Chef Ammar.")}</p></div><div className="payment-steps"><span className="complete"><b>1</b>{t("Jualan selesai")}</span><i /><span className="complete"><b>2</b>{t("Invoice dijana")}</span><i /><span className="complete"><b>3</b>{t("Kelulusan Chef")}</span><i /><span className={paid ? "complete" : "active"}><b>4</b>{paid ? t("Resit tersedia") : t("Bayaran")}</span></div><PaymentMethodBox payMethod={payMethod} setPayMethod={setPayMethod} reference={commissionWeek.reference} amount={commissionWeek.commission} settings={paymentSettings} /><div className="payment-actions"><button className="secondary-button" onClick={onOpenReceipt} disabled={!paid}>{t("Preview resit")}</button><GatedButton permission="recordPayment" className="primary-button" onClick={onPay} disabled={paid}>{paid ? t("Sudah dibayar") : "Pay KretivCo (dummy)"}</GatedButton></div></article></section>;
 }
 
 function TeamView({ notify }: { notify: (v: string) => void }) {
@@ -1164,7 +1351,14 @@ function ShipmentsPanel({ shipments, notify, onSelectShipment }: { shipments: Sh
         <label className="search-box"><Search size={16} /><input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder={t("Cari...")} /></label>
         <Dropdown className="filter-select" value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={["Semua status penghantaran", ...SHIPMENT_STAGES, "Gagal dihantar"].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Tapis status")} />
         <Dropdown className="filter-select compact-select" value={courier} onChange={(v) => { setCourier(v); setPage(1); }} options={["Semua kurier", ...Object.keys(COURIER_TONES)].map((v) => ({ value: v, label: t(v) }))} ariaLabel={t("Kurier")} />
-        <button className="export-button" onClick={() => notify(t("Fail CSV sedang disediakan"))}><Download size={14} /><span>{t("Export")}</span></button>
+        <button className="export-button" onClick={() => {
+          downloadCsv(
+            `penghantaran-${new Date().toISOString().slice(0, 10)}.csv`,
+            ["Tracking", "Order ID", "Kurier", "Servis", "Penerima", "Destinasi", "Poskod", "Berat (kg)", "Kos (RM)", "Status", "Ditempah", "Anggaran sampai"],
+            filtered.map((s) => [s.trackingNo, s.orderId, s.courier, s.service, s.recipient, s.destination, s.postcode, s.weightKg, s.cost.toFixed(2), s.status, s.bookedAt, s.estimatedDelivery]),
+          );
+          notify(`${filtered.length} ${t("baris dieksport ke CSV")}`);
+        }} disabled={filtered.length === 0}><Download size={14} /><span>{t("Export")}</span></button>
       </div></div>
       <div className="table-wrap"><table><thead><tr><th>{t("TRACKING")}</th><th>{t("PESANAN")}</th><th>{t("PENERIMA")}</th><th>{t("KURIER")}</th><th>{t("DESTINASI")}</th><th>{t("KOS")}</th><th>{t("STATUS")}</th><th /></tr></thead><tbody>{visible.map((shipment) => <tr key={shipment.trackingNo} tabIndex={0} onClick={() => onSelectShipment(shipment)} onKeyDown={(e) => { if (e.key === "Enter") onSelectShipment(shipment); }}>
         <td><strong className="tracking-no">{shipment.trackingNo}</strong><small>{shipment.bookedAt}</small></td>
@@ -1237,7 +1431,7 @@ function CouriersView({ shipments, courierStatus, notify }: { shipments: Shipmen
   </section>;
 }
 
-function ShipmentDrawer({ shipment, onClose, notify }: { shipment: Shipment; onClose: () => void; notify: (v: string) => void }) {
+function ShipmentDrawer({ shipment, order, onClose, onOpenOrder, notify }: { shipment: Shipment; order: Order | null; onClose: () => void; onOpenOrder: (order: Order) => void; notify: (v: string) => void }) {
   const { t } = useLang();
   const settled = shipment.status === "Dihantar" || shipment.status === "Gagal dihantar";
   const lastIndex = shipment.checkpoints.length - 1;
@@ -1248,6 +1442,14 @@ function ShipmentDrawer({ shipment, onClose, notify }: { shipment: Shipment; onC
       <div className="drawer-status"><ShipmentStatusBadge status={shipment.status} /><span>{t("Ditempah")} {shipment.bookedAt}</span></div>
 
       <section className="drawer-section"><h3>{t("Kurier")}</h3><div className="drawer-product"><span className="courier-thumb large" style={{ background: COURIER_TONES[shipment.courier].color }}>{COURIER_TONES[shipment.courier].short}</span><span><strong>{shipment.courier}</strong><small>{t(shipment.service)}</small></span><b>{currency(shipment.cost)}</b></div></section>
+
+      {order && <section className="drawer-section"><h3>{t("Pesanan")}</h3>
+        <button className="linked-card" onClick={() => onOpenOrder(order)}>
+          <span className="product-thumb" style={{ background: order.productTone }}>{order.productCode}</span>
+          <span className="linked-card-main"><strong>{order.id}</strong><small>{order.item} · {currency(order.amount)}</small></span>
+          <span className="linked-card-end"><StatusBadge status={order.status} /><ChevronRight size={16} /></span>
+        </button>
+      </section>}
 
       <section className="drawer-section"><h3>{t("Penerima")}</h3><div className="drawer-details">
         <span><small>{t("Nama")}</small><strong>{shipment.recipient}</strong></span>
@@ -1272,6 +1474,206 @@ function ShipmentDrawer({ shipment, onClose, notify }: { shipment: Shipment; onC
       </div>
     </aside>
   </div>;
+}
+
+function NotificationPanel({ notifications, onSelect, onClose }: { notifications: AppNotification[]; onSelect: (n: AppNotification) => void; onClose: () => void }) {
+  const { t } = useLang();
+  return <>
+    <button className="dropdown-backdrop" aria-hidden onClick={onClose} tabIndex={-1} />
+    <div className="notification-panel" role="dialog" aria-label={t("Notifikasi")}>
+      <div className="notification-head"><strong>{t("Notifikasi")}</strong><span>{notifications.length}</span></div>
+      {notifications.length === 0
+        ? <p className="notification-empty">{t("Tiada notifikasi baharu")}</p>
+        : <ul>{notifications.map((n) => <li key={n.id}>
+            <button onClick={() => onSelect(n)}>
+              <i className={`notification-dot tone-${n.tone}`} />
+              <span><strong>{t(n.title)}</strong><small>{t(n.detail)}</small></span>
+              <ChevronRight size={15} />
+            </button>
+          </li>)}</ul>}
+    </div>
+  </>;
+}
+
+function BookShipmentModal({ order, onClose, onBook }: { order: Order; onClose: () => void; onBook: (courier: CourierName, weightKg: number, destination: string, postcode: string) => Promise<void> }) {
+  const { t } = useLang();
+  const [courier, setCourier] = useState<CourierName>("J&T Express");
+  const [weight, setWeight] = useState("0.6");
+  const [destination, setDestination] = useState("");
+  const [postcode, setPostcode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const weightKg = Number(weight);
+  const validWeight = Number.isFinite(weightKg) && weightKg > 0;
+  const validPostcode = /^\d{5}$/.test(postcode.trim());
+  const ready = validWeight && validPostcode && destination.trim().length > 0 && !busy;
+
+  const submit = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await onBook(courier, weightKg, destination.trim(), postcode.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <div className="modal-layer" role="dialog" aria-modal="true"><div className="modal">
+    <button className="modal-close" onClick={onClose}><X size={20} /></button>
+    <p className="eyebrow">{t("TEMPAH PENGHANTARAN")}</p>
+    <h2>{order.id}</h2>
+    <p>{t("Tempah AWB untuk")} {order.customer} · {order.item}</p>
+
+    <label className="settings-field"><small>{t("Kurier")}</small>
+      <div className="courier-picker">{(Object.keys(COURIER_TONES) as CourierName[]).map((name) => <button
+        key={name}
+        className={courier === name ? "active" : ""}
+        onClick={() => setCourier(name)}
+        aria-pressed={courier === name}
+      >
+        <span className="courier-thumb" style={{ background: COURIER_TONES[name].color }}>{COURIER_TONES[name].short}</span>
+        <span><strong>{name}</strong><small>{currency(quoteFor(name, validWeight ? weightKg : 0.6))}</small></span>
+      </button>)}</div>
+    </label>
+
+    <div className="booking-fields">
+      <label className="settings-field"><small>{t("Berat")} (kg)</small><input className="settings-input" value={weight} onChange={(e) => setWeight(e.target.value)} inputMode="decimal" /></label>
+      <label className="settings-field"><small>{t("Poskod")}</small><input className="settings-input" value={postcode} onChange={(e) => setPostcode(e.target.value)} inputMode="numeric" maxLength={5} placeholder="40150" /></label>
+    </div>
+    <label className="settings-field"><small>{t("Destinasi")}</small><input className="settings-input" value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Shah Alam, Selangor" /></label>
+
+    {postcode.length > 0 && !validPostcode && <p className="import-note">{t("Poskod mesti 5 digit")}</p>}
+    {error && <div className="import-summary has-error"><strong>{t("Tempahan gagal")}</strong><span>{error}</span></div>}
+
+    <div className="booking-quote"><span>{t("Anggaran kos")}</span><strong>{validWeight ? currency(quoteFor(courier, weightKg)) : "—"}</strong></div>
+
+    <div className="modal-actions">
+      <button className="secondary-button" onClick={onClose}>{t("Batal")}</button>
+      <button className="primary-button" disabled={!ready} onClick={submit}>{busy ? t("Menempah…") : t("Tempah penghantaran")}</button>
+    </div>
+  </div></div>;
+}
+
+const STOCK_LEVEL_CLASS = { out: "ship-failed", low: "ship-out", ok: "ship-delivered" } as const;
+const STOCK_LEVEL_LABEL = { out: "Habis", low: "Rendah", ok: "Mencukupi" } as const;
+
+function ProductsView({ products, saving, onSaveStock, notify }: { products: Product[]; saving: string | null; onSaveStock: (sku: string, stock: number, reorderLevel: number) => void; notify: (v: string) => void }) {
+  const { t } = useLang();
+  const { can, deniedReason } = useRole();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [stock, setStock] = useState("");
+  const [reorder, setReorder] = useState("");
+
+  const startEdit = (product: Product) => {
+    setEditing(product.sku);
+    setStock(String(product.stock));
+    setReorder(String(product.reorderLevel));
+  };
+
+  const commit = (sku: string) => {
+    const nextStock = Number(stock);
+    const nextReorder = Number(reorder);
+    if (!Number.isInteger(nextStock) || nextStock < 0 || !Number.isInteger(nextReorder) || nextReorder < 0) {
+      notify(t("Masukkan nombor bulat yang sah"));
+      return;
+    }
+    onSaveStock(sku, nextStock, nextReorder);
+    setEditing(null);
+  };
+
+  const lowCount = products.filter((p) => stockLevelOf(p) !== "ok").length;
+  const totalUnits = products.reduce((sum, p) => sum + p.stock, 0);
+  const stockValue = products.reduce((sum, p) => sum + p.stock * p.price, 0);
+  const soldThisWeek = products.reduce((sum, p) => sum + p.soldThisWeek, 0);
+
+  return <section className="view-stack">
+    <div className="metrics-grid">
+      <article className="metric metric-featured"><p>{t("Nilai stok")}</p><h2>{currency(stockValue)}</h2><small>{totalUnits} {t("unit dalam stok")}</small></article>
+      <article className="metric"><p>{t("SKU perlu perhatian")}</p><h2>{lowCount}</h2><small>{t("Habis atau bawah paras pesanan semula")}</small></article>
+      <article className="metric"><p>{t("Unit terjual")}</p><h2>{soldThisWeek}</h2><small>{t("Minggu ini")}</small></article>
+      <article className="metric"><p>{t("Jumlah SKU")}</p><h2>{products.length}</h2><small>Chef Ammar™ Arabic Spices</small></article>
+    </div>
+
+    <section className="panel orders-panel orders-expanded">
+      <div className="panel-heading orders-heading"><div><h3>{t("Inventori produk")}</h3><p>{t("Paras stok dan kadar jualan setiap SKU.")}</p></div><div className="table-actions">
+        <button className="export-button" onClick={() => {
+          downloadCsv(
+            `inventori-${new Date().toISOString().slice(0, 10)}.csv`,
+            ["SKU", "Produk", "Berat", "Harga (RM)", "Stok", "Paras pesanan semula", "Terjual minggu ini", "Status"],
+            products.map((p) => [p.sku, p.name, p.weightLabel, p.price.toFixed(2), p.stock, p.reorderLevel, p.soldThisWeek, STOCK_LEVEL_LABEL[stockLevelOf(p)]]),
+          );
+          notify(`${products.length} ${t("baris dieksport ke CSV")}`);
+        }}><Download size={14} /><span>{t("Export")}</span></button>
+      </div></div>
+      <div className="table-wrap"><table><thead><tr><th>{t("PRODUK")}</th><th>SKU</th><th>{t("HARGA")}</th><th>{t("STOK")}</th><th>{t("PARAS SEMULA")}</th><th>{t("TERJUAL")}</th><th>{t("LIPUTAN")}</th><th>{t("STATUS")}</th><th /></tr></thead><tbody>{products.map((product) => {
+        const level = stockLevelOf(product);
+        const cover = weeksOfCover(product);
+        const isEditing = editing === product.sku;
+        return <tr key={product.sku}>
+          <td><div className="product-cell"><span className="product-thumb" style={{ background: product.tone }}>{product.code}</span><span><strong>{product.name}</strong><small>{product.weightLabel}</small></span></div></td>
+          <td><small className="tracking-no">{product.sku}</small></td>
+          <td><strong>{currency(product.price)}</strong></td>
+          <td>{isEditing
+            ? <input className="stock-input" value={stock} onChange={(e) => setStock(e.target.value)} aria-label={t("STOK")} />
+            : <strong className="stock-count">{product.stock}</strong>}</td>
+          <td>{isEditing
+            ? <input className="stock-input" value={reorder} onChange={(e) => setReorder(e.target.value)} aria-label={t("PARAS SEMULA")} />
+            : <span className="muted-cell">{product.reorderLevel}</span>}</td>
+          <td><span className="muted-cell">{product.soldThisWeek}</span></td>
+          <td><span className="muted-cell">{cover === null ? "—" : `${cover} ${t("minggu")}`}</span></td>
+          <td><span className={`status status-${STOCK_LEVEL_CLASS[level]}`}><span />{t(STOCK_LEVEL_LABEL[level])}</span></td>
+          <td>{isEditing
+            ? <div className="stock-actions"><button className="secondary-button compact" onClick={() => setEditing(null)}>{t("Batal")}</button><button className="primary-button compact" disabled={saving === product.sku} onClick={() => commit(product.sku)}>{saving === product.sku ? t("Menyimpan…") : t("Simpan")}</button></div>
+            : <button className="row-menu" title={can("adjustStock") ? t("Laras stok") : deniedReason} disabled={!can("adjustStock")} aria-label={`${t("Laras stok")} ${product.name}`} onClick={() => startEdit(product)}><Pencil size={15} /></button>}</td>
+        </tr>;
+      })}</tbody></table></div>
+    </section>
+  </section>;
+}
+
+function CustomersView({ orders, onOpenOrder }: { orders: Order[]; onOpenOrder: (order: Order) => void }) {
+  const { t } = useLang();
+  const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const customers = useMemo(() => aggregateCustomers(orders), [orders]);
+  const summary = useMemo(() => summariseCustomers(customers), [customers]);
+  const filtered = useMemo(() => customers.filter((c) => `${c.name} ${c.topChannel}`.toLowerCase().includes(query.toLowerCase())), [customers, query]);
+
+  return <section className="view-stack">
+    <div className="metrics-grid">
+      <article className="metric metric-featured"><p>{t("Jumlah pelanggan")}</p><h2>{summary.total}</h2><small>{t("Daripada pesanan yang direkod")}</small></article>
+      <article className="metric"><p>{t("Pelanggan berulang")}</p><h2>{summary.repeat}</h2><small>{summary.repeatRate}% {t("kadar pembelian berulang")}</small></article>
+      <article className="metric"><p>{t("Purata nilai sepanjang hayat")}</p><h2>{currency(summary.averageLifetimeValue)}</h2><small>{t("Setiap pelanggan")}</small></article>
+      <article className="metric"><p>{t("Pelanggan teratas")}</p><h2 className="metric-name">{customers[0]?.name ?? "—"}</h2><small>{customers[0] ? currency(customers[0].lifetimeValue) : ""}</small></article>
+    </div>
+
+    <section className="panel orders-panel orders-expanded">
+      <div className="panel-heading orders-heading"><div><h3>{t("Pelanggan")}</h3><p>{filtered.length} {t("pelanggan ditemui")}</p></div><div className="table-actions">
+        <label className="search-box"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("Cari...")} /></label>
+      </div></div>
+      <div className="table-wrap"><table><thead><tr><th>{t("PELANGGAN")}</th><th>{t("PESANAN")}</th><th>{t("NILAI SEPANJANG HAYAT")}</th><th>{t("PURATA")}</th><th>{t("SALURAN UTAMA")}</th><th>{t("PESANAN TERAKHIR")}</th><th /></tr></thead><tbody>{filtered.map((customer) => <Fragment key={customer.name}>
+        <tr tabIndex={0} onClick={() => setExpanded(expanded === customer.name ? null : customer.name)} onKeyDown={(e) => { if (e.key === "Enter") setExpanded(expanded === customer.name ? null : customer.name); }}>
+          <td><div className="customer"><span>{customer.initials}</span><strong>{customer.name}</strong></div></td>
+          <td><strong>{customer.orderCount}</strong>{customer.refunds > 0 && <small>{customer.refunds} refund</small>}</td>
+          <td><strong>{currency(customer.lifetimeValue)}</strong></td>
+          <td><span className="muted-cell">{currency(customer.averageOrder)}</span></td>
+          <td><span className={`channel-tag ${customer.topChannel.split(".")[0].toLowerCase().replace(" shop", "")}`}>{customer.topChannel}</span></td>
+          <td><strong>{customer.lastOrderId}</strong><small>{customer.lastOrderTime}</small></td>
+          <td><button className="row-menu" aria-label={`${t("Buka")} ${customer.name}`} aria-expanded={expanded === customer.name} onClick={(e) => { e.stopPropagation(); setExpanded(expanded === customer.name ? null : customer.name); }}><ChevronDown size={16} style={{ transform: expanded === customer.name ? "rotate(180deg)" : undefined, transition: "transform 150ms" }} /></button></td>
+        </tr>
+        {expanded === customer.name && <tr className="customer-orders-row"><td colSpan={7}><div className="customer-orders">{customer.orders.map((order) => <button className="customer-order" key={order.id} onClick={() => onOpenOrder(order)}>
+          <span className="product-thumb" style={{ background: order.productTone }}>{order.productCode}</span>
+          <span className="customer-order-main"><strong>{order.id}</strong><small>{order.item} · {order.time}</small></span>
+          <StatusBadge status={order.status} />
+          <b>{currency(order.amount)}</b>
+        </button>)}</div></td></tr>}
+      </Fragment>)}</tbody></table>{filtered.length === 0 && <div className="empty-state"><Search size={28} /><strong>{t("Tiada pelanggan")}</strong><span>{t("Ubah carian anda.")}</span></div>}</div>
+    </section>
+  </section>;
 }
 
 function SettingsView({ notify, sourceStatus, paymentSettings, onSavePaymentSettings }: { notify: (v: string) => void; sourceStatus: Record<DataSourceKey, SourceStatus> | null; paymentSettings: PaymentSettings; onSavePaymentSettings: (next: PaymentSettings) => void }) {
@@ -1301,22 +1703,67 @@ function SettingsView({ notify, sourceStatus, paymentSettings, onSavePaymentSett
     reader.readAsDataURL(file);
   };
 
-  return <section className="settings-grid"><article className="panel settings-panel"><h3>{t("Tetapan komisen")}</h3><p>{t("Kadar ini digunakan untuk penyata baharu.")}</p><label>{t("Kadar komisen KretivWork")}<div style={{ width: 170 }}><span style={{ paddingLeft: 12 }}>RM</span><input defaultValue={COMMISSION_PER_ITEM} style={{ width: 40, padding: "0 4px" }} /><span style={{ paddingRight: 12 }}>/ item</span></div></label><button className="primary-button" onClick={() => notify(t("Tetapan komisen disimpan"))}>{t("Simpan perubahan")}</button></article><article className="panel settings-panel"><h3>{t("Sambungan platform")}</h3><p>{t("Status sumber data pesanan.")}</p>{channels.map((channel) => {
+  return <section className="settings-grid"><article className="panel settings-panel"><h3>{t("Tetapan komisen")}</h3><p>{t("Kadar ini digunakan untuk penyata baharu.")}</p><label>{t("Kadar komisen KretivWork")}<div style={{ width: 170 }}><span style={{ paddingLeft: 12 }}>RM</span><input defaultValue={COMMISSION_PER_ITEM} style={{ width: 40, padding: "0 4px" }} /><span style={{ paddingRight: 12 }}>/ item</span></div></label><GatedButton permission="editSettings" className="primary-button" onClick={() => notify(t("Tetapan komisen disimpan"))}>{t("Simpan perubahan")}</GatedButton></article><article className="panel settings-panel"><h3>{t("Sambungan platform")}</h3><p>{t("Status sumber data pesanan.")}</p>{channels.map((channel) => {
     const status = sourceStatus?.[CHANNEL_TO_SOURCE_KEY[channel.name]] ?? null;
     const issue = status === "error";
     const label = status === null ? t("Memuatkan status…") : status === "real" ? t("Disambungkan") : status === "mock" ? t("Data ujian (mock)") : t("Ralat sambungan API");
     const state = status === null ? "…" : status === "real" ? t("Aktif") : status === "mock" ? "Mock" : t("Semak");
     return <button className={`integration-row ${issue ? "has-warning" : status === "mock" ? "is-mock" : ""}`} key={channel.name} onClick={() => issue && notify(t("Ralat sambungan API"))}><ChannelLogo name={channel.name} color={channel.color} /><span><strong>{channel.name}</strong><small>{label}</small></span><span className="integration-state"><i />{state}</span></button>;
-  })}</article><article className="panel settings-panel"><h3>{t("Kaedah pembayaran")}</h3><p>{t("Kemas kini bank dan kod QR untuk pembayaran KretivCo.")}</p><label className="settings-field"><small>{t("Nama bank")}</small><input className="settings-input" value={bankName} onChange={(e) => setBankName(e.target.value)} /></label><label className="settings-field"><small>{t("Nama pemegang akaun")}</small><input className="settings-input" value={accountName} onChange={(e) => setAccountName(e.target.value)} /></label><label className="settings-field"><small>{t("Nombor akaun")}</small><input className="settings-input" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} /></label><label className="settings-field"><small>{t("Kod QR pembayaran")}</small><div className="qr-upload-row">{qrImageDataUrl ? <img className="qr-upload-preview" src={qrImageDataUrl} alt="" /> : null}<input type="file" accept="image/*" onChange={onQrFileChange} /></div></label><button className="primary-button" onClick={() => { onSavePaymentSettings({ bankName, accountName, accountNumber, qrImageDataUrl }); notify(t("Kaedah pembayaran disimpan")); }}>{t("Simpan perubahan")}</button></article></section>;
+  })}</article><article className="panel settings-panel"><h3>{t("Kaedah pembayaran")}</h3><p>{t("Kemas kini bank dan kod QR untuk pembayaran KretivCo.")}</p><label className="settings-field"><small>{t("Nama bank")}</small><input className="settings-input" value={bankName} onChange={(e) => setBankName(e.target.value)} /></label><label className="settings-field"><small>{t("Nama pemegang akaun")}</small><input className="settings-input" value={accountName} onChange={(e) => setAccountName(e.target.value)} /></label><label className="settings-field"><small>{t("Nombor akaun")}</small><input className="settings-input" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} /></label><label className="settings-field"><small>{t("Kod QR pembayaran")}</small><div className="qr-upload-row">{qrImageDataUrl ? <img className="qr-upload-preview" src={qrImageDataUrl} alt="" /> : null}<input type="file" accept="image/*" onChange={onQrFileChange} /></div></label><GatedButton permission="editSettings" className="primary-button" onClick={() => { onSavePaymentSettings({ bankName, accountName, accountNumber, qrImageDataUrl }); notify(t("Kaedah pembayaran disimpan")); }}>{t("Simpan perubahan")}</GatedButton></article></section>;
 }
 
-function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function ImportModal({ existingIds, onClose, onImport }: { existingIds: string[]; onClose: () => void; onImport: (orders: Order[]) => void }) {
   const { t } = useLang();
   const [file, setFile] = useState("");
-  return <div className="modal-layer" role="dialog" aria-modal="true"><div className="modal"><button className="modal-close" onClick={onClose}><X size={20} /></button><p className="eyebrow">IMPORT CSV</p><h2>{t("Import data pesanan")}</h2><p>{t("Muat naik CSV daripada Shopee atau TikTok Shop. Pesanan pendua akan disemak secara automatik.")}</p><label className="drop-zone"><span className="file-type">CSV</span><strong>{file || t("Pilih fail")}</strong><span>{t("atau tarik dan lepaskan di sini")}</span><input type="file" accept=".csv" onChange={(e) => setFile(e.target.files?.[0]?.name ?? "")} /></label><div className="modal-actions"><button className="secondary-button" onClick={onClose}>{t("Batal")}</button><button className="primary-button" disabled={!file} onClick={onDone}>{t("Import")}</button></div></div></div>;
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [reading, setReading] = useState(false);
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (!selected) return;
+    setFile(selected.name);
+    setResult(null);
+    setReading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setResult(importOrdersFromCsv(typeof reader.result === "string" ? reader.result : "", existingIds));
+      setReading(false);
+    };
+    reader.onerror = () => { setReading(false); setResult(null); };
+    reader.readAsText(selected);
+  };
+
+  const ready = result !== null && result.orders.length > 0;
+
+  return <div className="modal-layer" role="dialog" aria-modal="true"><div className="modal">
+    <button className="modal-close" onClick={onClose}><X size={20} /></button>
+    <p className="eyebrow">IMPORT CSV</p>
+    <h2>{t("Import data pesanan")}</h2>
+    <p>{t("Muat naik CSV daripada Shopee atau TikTok Shop. Pesanan pendua akan disemak secara automatik.")}</p>
+    <label className="drop-zone"><span className="file-type">CSV</span><strong>{file || t("Pilih fail")}</strong><span>{t("atau tarik dan lepaskan di sini")}</span><input type="file" accept=".csv,text/csv" onChange={onFileChange} /></label>
+
+    {reading && <p className="import-note">{t("Membaca fail…")}</p>}
+
+    {result && result.missingColumns.length > 0 && <div className="import-summary has-error">
+      <strong>{t("Lajur wajib tidak dijumpai")}</strong>
+      <span>{t("Fail perlu ada lajur")}: {result.missingColumns.join(", ")}</span>
+    </div>}
+
+    {result && result.missingColumns.length === 0 && <div className={`import-summary ${result.orders.length ? "" : "has-error"}`}>
+      <span className="import-stat"><b>{result.orders.length}</b>{t("pesanan baharu")}</span>
+      <span className="import-stat"><b>{result.duplicates.length}</b>{t("pendua dilangkau")}</span>
+      <span className="import-stat"><b>{result.skipped.length}</b>{t("baris tidak sah")}</span>
+      {result.skipped.length > 0 && <small>{result.skipped.slice(0, 3).map((s) => `${t("Baris")} ${s.line}: ${t(s.reason)}`).join(" · ")}{result.skipped.length > 3 ? " …" : ""}</small>}
+    </div>}
+
+    <div className="modal-actions">
+      <button className="secondary-button" onClick={onClose}>{t("Batal")}</button>
+      <button className="primary-button" disabled={!ready} onClick={() => result && onImport(result.orders)}>{t("Import")}{ready ? ` (${result.orders.length})` : ""}</button>
+    </div>
+  </div></div>;
 }
 
-function OrderDrawer({ order, onClose, notify }: { order: Order; onClose: () => void; notify: (message: string) => void }) {
+function OrderDrawer({ order, shipment, onClose, onOpenShipment, onBookShipment, notify }: { order: Order; shipment: Shipment | null; onClose: () => void; onOpenShipment: (shipment: Shipment) => void; onBookShipment: () => void; notify: (message: string) => void }) {
   const { t } = useLang();
   return <div className="modal-layer drawer-layer" role="dialog" aria-modal="true" aria-label={`${t("Butiran pesanan")} ${order.id}`}>
     <aside className="drawer">
@@ -1325,20 +1772,37 @@ function OrderDrawer({ order, onClose, notify }: { order: Order; onClose: () => 
       <section className="drawer-section"><h3>{t("Produk")}</h3><div className="drawer-product"><span className="product-thumb large" style={{ background: order.productTone }}>{order.productCode}</span><span><strong>{order.item}</strong><small>Chef Ammar™ Arabic Spices</small></span><b>{currency(order.amount)}</b></div></section>
       <section className="drawer-section"><h3>{t("Pelanggan")}</h3><div className="drawer-details"><span><small>{t("Nama")}</small><strong>{order.customer}</strong></span><span><small>{t("Bayaran")}</small><strong>{order.payment}</strong></span><span><small>{t("Saluran")}</small><strong>{order.channel}</strong></span><span><small>{t("Punca")}</small><strong>{order.channel === "TikTok Shop" ? "TikTok Content" : order.channel === "Shopee" ? "KOL / Affiliate" : "Threads"}</strong></span></div></section>
       <section className="drawer-section"><h3>{t("Status")}</h3><div className="order-timeline"><span className="complete"><i /><b>{t("Bayaran diterima")}</b><small>{t("Transaksi disahkan")}</small></span><span className={order.status === "Diproses" ? "current" : "complete"}><i>{order.status === "Diproses" ? "2" : ""}</i><b>{t("Pesanan diproses")}</b><small>{t("Diserahkan kepada pasukan fulfilment")}</small></span><span className={order.status === "Selesai" ? "complete" : ""}><i>{order.status === "Selesai" ? "" : "3"}</i><b>{t("Selesai")}</b><small>{t("Pesanan diterima pelanggan")}</small></span></div></section>
+      <section className="drawer-section"><h3>{t("Penghantaran")}</h3>{shipment ? (
+        <button className="linked-card" onClick={() => onOpenShipment(shipment)}>
+          <span className="courier-thumb" style={{ background: COURIER_TONES[shipment.courier].color }}>{COURIER_TONES[shipment.courier].short}</span>
+          <span className="linked-card-main">
+            <strong className="tracking-no">{shipment.trackingNo}</strong>
+            <small>{shipment.courier} · {shipment.destination}</small>
+          </span>
+          <span className="linked-card-end"><ShipmentStatusBadge status={shipment.status} /><ChevronRight size={16} /></span>
+        </button>
+      ) : (
+        <div className="drawer-empty">
+          <p>{t("Belum ada penghantaran untuk pesanan ini.")}</p>
+          <GatedButton permission="bookShipment" className="secondary-button" onClick={onBookShipment}>{t("Tempah penghantaran")}</GatedButton>
+        </div>
+      )}</section>
+
       <div className="drawer-total"><span>{t("Jumlah dibayar")}</span><strong>{currency(order.amount)}</strong></div>
       <div className="drawer-actions"><button className="secondary-button" onClick={() => notify(`${t("Invois")} ${order.id} ${t("sedang disediakan")}`)}>{t("Invois")}</button><button className="primary-button" onClick={() => notify(t("Status pesanan telah dikemas kini"))}>{t("Kemas kini status")}</button></div>
     </aside>
   </div>;
 }
 
-function StatementDrawer({ weekIndex, role, approved, paid, onClose, onApprove }: { weekIndex: number; role: string; approved: boolean; paid: boolean; onClose: () => void; onApprove: () => void }) {
+function StatementDrawer({ weekIndex, approved, paid, onClose, onApprove }: { weekIndex: number; approved: boolean; paid: boolean; onClose: () => void; onApprove: () => void }) {
   const { t } = useLang();
+  const { can } = useRole();
   const [mode, setMode] = useState<"summary" | "detailed">("summary");
   const [downloading, setDownloading] = useState(false);
   const week = weeklyStatements[weekIndex];
   const isCurrent = weekIndex === 0;
   const status = isCurrent ? (paid ? "Dibayar" : approved ? "Diluluskan" : "Perlu semakan") : "Dibayar";
-  const canApprove = isCurrent && role === "Chef Ammar" && !approved;
+  const canApprove = isCurrent && can("approveStatement") && !approved;
   const statusLabel = status === "Dibayar" ? "Paid" : status === "Diluluskan" ? "Approved" : "Pending review";
 
   const downloadStatementPdf = async () => {
@@ -1390,7 +1854,7 @@ function StatementDrawer({ weekIndex, role, approved, paid, onClose, onApprove }
         <button className="secondary-button" onClick={downloadStatementPdf} disabled={downloading}>{downloading ? t("Menjana PDF…") : t("Muat turun")}</button>
         {canApprove ? <button className="primary-button" onClick={onApprove}>{t("Luluskan penyata")}</button> : <button className="primary-button" onClick={onClose}>{isCurrent && approved ? t("Siap") : t("Tutup")}</button>}
       </div>
-      {isCurrent && role !== "Chef Ammar" && !approved && <small className="approval-hint">{t("Tukar kepada pandangan Chef Ammar untuk menguji fungsi kelulusan.")}</small>}
+      {isCurrent && !can("approveStatement") && !approved && <small className="approval-hint">{t("Tukar kepada pandangan Chef Ammar untuk menguji fungsi kelulusan.")}</small>}
     </div>
 
     <div className="print-sheet">

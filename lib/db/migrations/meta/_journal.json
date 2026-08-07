@@ -15,6 +15,13 @@
       "when": 1785043684698,
       "tag": "0001_jazzy_mesmero",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786074467949,
+      "tag": "0002_curved_silver_fox",
+      "breakpoints": true
     }
   ]
 }
