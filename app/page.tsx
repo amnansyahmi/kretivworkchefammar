@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LoaderCircle,
   Menu,
+  Pencil,
   RefreshCw,
   Search,
   Settings,
@@ -20,7 +21,7 @@ import {
 } from "lucide-react";
 import { SiShopee, SiTiktok } from "react-icons/si";
 import { QRCodeSVG } from "qrcode.react";
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { CourierKey, DataSourceKey } from "../lib/config";
 import { mockOrders } from "../lib/sources/mock-orders";
 import type { Order } from "../lib/sources/types";
@@ -33,6 +34,12 @@ import { downloadPdf } from "../lib/pdf/download";
 import { downloadCsv } from "../lib/csv";
 import { importOrdersFromCsv, type ImportResult } from "../lib/csv/import-orders";
 import { can as roleCan, deniedReason, type Permission, type Role } from "../lib/roles";
+import { mockProducts } from "../lib/inventory/mock-products";
+import { stockLevelOf, weeksOfCover, type Product } from "../lib/inventory/types";
+import { aggregateCustomers, summariseCustomers, type Customer } from "../lib/customers";
+import { deriveNotifications, type AppNotification } from "../lib/notifications";
+import { quoteFor } from "../lib/logistics/booking";
+import type { CourierName } from "../lib/logistics/types";
 
 type Lang = "bm" | "en";
 
@@ -149,6 +156,40 @@ const EN: Record<string, string> = {
   "Belum ada penghantaran untuk pesanan ini.": "No shipment booked for this order yet.",
   "Hanya pasukan KretivWork boleh buat tindakan ini.": "Only the KretivWork team can do this.",
   "Hanya Chef Ammar boleh buat tindakan ini.": "Only Chef Ammar can do this.",
+
+  // Inventory
+  "Inventori": "Inventory", "Inventori produk": "Product inventory",
+  "Paras stok dan kadar jualan setiap SKU.": "Stock levels and sell-through per SKU.",
+  "Nilai stok": "Stock value", "unit dalam stok": "units in stock",
+  "SKU perlu perhatian": "SKUs needing attention", "Habis atau bawah paras pesanan semula": "Out of stock or below reorder level",
+  "Unit terjual": "Units sold", "Jumlah SKU": "Total SKUs",
+  "HARGA": "PRICE", "STOK": "STOCK", "PARAS SEMULA": "REORDER AT", "TERJUAL": "SOLD", "LIPUTAN": "COVER",
+  "minggu": "weeks", "Habis": "Out of stock", "Rendah": "Low", "Mencukupi": "Healthy",
+  "Laras stok": "Adjust stock", "Simpan": "Save", "Menyimpan…": "Saving…",
+  "Masukkan nombor bulat yang sah": "Enter a valid whole number",
+  "Paras stok disimpan": "Stock level saved",
+  "Paras stok dikemas kini (tidak kekal tanpa pangkalan data)": "Stock level updated (not persisted without a database)",
+  "Gagal menyimpan paras stok": "Failed to save stock level",
+
+  // Customers
+  "Jumlah pelanggan": "Total customers", "Daripada pesanan yang direkod": "From recorded orders",
+  "Pelanggan berulang": "Repeat customers", "kadar pembelian berulang": "repeat purchase rate",
+  "Purata nilai sepanjang hayat": "Average lifetime value", "Setiap pelanggan": "Per customer",
+  "Pelanggan teratas": "Top customer", "pelanggan ditemui": "customers found",
+  "NILAI SEPANJANG HAYAT": "LIFETIME VALUE", "PURATA": "AVERAGE", "SALURAN UTAMA": "TOP CHANNEL",
+  "PESANAN TERAKHIR": "LAST ORDER", "Tiada pelanggan": "No customers", "Ubah carian anda.": "Change your search.",
+
+  // Notifications
+  "Penghantaran gagal": "Delivery failed", "Stok habis": "Out of stock", "Stok rendah": "Low stock",
+  "Penyata menunggu kelulusan": "Statement awaiting approval",
+  "Penyata komisen minggu ini belum diluluskan.": "This week's commission statement has not been approved.",
+  "Ralat sambungan kurier": "Courier connection error",
+  "Menunggu pickup kurier": "Awaiting courier pickup",
+
+  // Shipment booking
+  "TEMPAH PENGHANTARAN": "BOOK SHIPMENT", "Tempah penghantaran": "Book shipment", "Tempah AWB untuk": "Book an AWB for",
+  "Anggaran kos": "Estimated cost", "Menempah…": "Booking…", "Tempahan gagal": "Booking failed",
+  "Poskod mesti 5 digit": "Postcode must be 5 digits", "Penghantaran ditempah": "Shipment booked",
   "BUTIRAN PESANAN": "ORDER DETAILS", "Butiran pesanan": "Order details", "Produk": "Product", "Pelanggan": "Customer",
   "Nama": "Name", "Punca": "Source",
   "Status": "Status", "Bayaran diterima": "Payment received", "Transaksi disahkan": "Transaction confirmed",
@@ -471,9 +512,23 @@ export default function Home() {
   const [liveOrders, setLiveOrders] = useState<Order[] | null>(null);
   const [sourceStatus, setSourceStatus] = useState<Record<DataSourceKey, SourceStatus> | null>(null);
   const [importedOrders, setImportedOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [savingSku, setSavingSku] = useState<string | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [bookingOrder, setBookingOrder] = useState<Order | null>(null);
+  const [bookedShipments, setBookedShipments] = useState<Shipment[]>([]);
   const [liveShipments, setLiveShipments] = useState<Shipment[] | null>(null);
   const [courierStatus, setCourierStatus] = useState<Record<CourierKey, CourierSourceStatus> | null>(null);
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/products")
+      .then((res) => res.json())
+      .then((data: { products: Product[] }) => { if (!cancelled) setProducts(data.products); })
+      .catch((err) => console.error("Failed to load products", err));
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -504,7 +559,43 @@ export default function Home() {
   // CSV-imported orders live in front of the fetched list until a real
   // write-back to the source platform exists.
   const orderList = useMemo(() => [...importedOrders, ...(liveOrders ?? orders)], [importedOrders, liveOrders, orders]);
-  const shipmentList = liveShipments ?? mockShipments;
+  const shipmentList = useMemo(() => [...bookedShipments, ...(liveShipments ?? mockShipments)], [bookedShipments, liveShipments]);
+
+  const saveStock = (sku: string, stock: number, reorderLevel: number) => {
+    setSavingSku(sku);
+    setProducts((current) => current.map((p) => (p.sku === sku ? { ...p, stock, reorderLevel } : p)));
+    fetch("/api/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sku, stock, reorderLevel }),
+    })
+      .then((res) => res.json())
+      .then((data: { persisted: boolean }) => notify(t(data.persisted ? "Paras stok disimpan" : "Paras stok dikemas kini (tidak kekal tanpa pangkalan data)")))
+      .catch((err) => { console.error("Failed to save stock level", err); notify(t("Gagal menyimpan paras stok")); })
+      .finally(() => setSavingSku(null));
+  };
+
+  const notifications = useMemo(() => deriveNotifications({
+    shipments: shipmentList,
+    products,
+    sourceStatus,
+    courierStatus,
+    statementApproved: approved,
+    canApproveStatement: roleCan(role, "approveStatement"),
+  }), [shipmentList, products, sourceStatus, courierStatus, approved, role]);
+
+  const bookShipmentFor = async (order: Order, courier: CourierName, weightKg: number, destination: string, postcode: string) => {
+    const res = await fetch("/api/shipments/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: order.id, recipient: order.customer, initials: order.initials, destination, postcode, weightKg, courier }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Booking failed");
+    setBookedShipments((current) => [data.shipment as Shipment, ...current]);
+    setBookingOrder(null);
+    notify(`${t("Penghantaran ditempah")} · ${(data.shipment as Shipment).trackingNo}`);
+  };
   const filteredOrders = useMemo(() => orderList.filter((order) => {
     const matchesQuery = `${order.id} ${order.customer} ${order.item} ${order.channel} ${order.payment}`.toLowerCase().includes(query.toLowerCase());
     return matchesQuery && (status === "Semua status" || order.status === status);
@@ -636,7 +727,26 @@ export default function Home() {
               <span className={role === "Chef Ammar" ? "chef-dot" : "kw-dot"}>{role === "Chef Ammar" ? "CA" : "KW"}</span>
               {t("Pandangan")}: {role}<ChevronDown size={15} />
             </button>
-            <button className="icon-button" onClick={() => notify(t("Tiada notifikasi baharu"))} aria-label={t("Notifikasi")}><Bell size={19} /><i /></button>
+            <div className="notification-wrap">
+              <button className="icon-button" onClick={() => setNotifOpen((v) => !v)} aria-label={t("Notifikasi")} aria-expanded={notifOpen}>
+                <Bell size={19} />
+                {notifications.length > 0 && <i className="notification-badge">{notifications.length}</i>}
+              </button>
+              {notifOpen && <NotificationPanel
+                notifications={notifications}
+                onClose={() => setNotifOpen(false)}
+                onSelect={(n) => {
+                  setNotifOpen(false);
+                  setActive(n.target.view);
+                  if (n.target.tab) {
+                    if (n.target.view === "sales") setSalesTab(n.target.tab);
+                    if (n.target.view === "logistics") setLogisticsTab(n.target.tab);
+                    if (n.target.view === "finance") setFinanceTab(n.target.tab);
+                    if (n.target.view === "settings") setSettingsTab(n.target.tab);
+                  }
+                }}
+              />}
+            </div>
           </div>
         </header>
 
@@ -775,8 +885,10 @@ export default function Home() {
           )}
 
           {active === "sales" && <>
-            <SectionTabs value={salesTab} onChange={setSalesTab} tabs={[{ id: "orders", label: "Pesanan" }, { id: "channels", label: "Saluran" }, { id: "sources", label: "Sumber" }]} />
+            <SectionTabs value={salesTab} onChange={setSalesTab} tabs={[{ id: "orders", label: "Pesanan" }, { id: "products", label: "Inventori" }, { id: "customers", label: "Pelanggan" }, { id: "channels", label: "Saluran" }, { id: "sources", label: "Sumber" }]} />
             {salesTab === "orders" && <OrdersPanel orders={filteredOrders} query={query} setQuery={setQuery} status={status} setStatus={setStatus} expanded notify={notify} onSelectOrder={setSelectedOrder} />}
+            {salesTab === "products" && <ProductsView products={products} saving={savingSku} onSaveStock={saveStock} notify={notify} />}
+            {salesTab === "customers" && <CustomersView orders={orderList} onOpenOrder={setSelectedOrder} />}
             {salesTab === "channels" && <ChannelsView notify={notify} />}
             {salesTab === "sources" && <AttributionView onOpenOrders={openOrdersFor} />}
           </>}
@@ -814,7 +926,13 @@ export default function Home() {
         shipment={shipmentList.find((s) => s.orderId === selectedOrder.id) ?? null}
         onClose={() => setSelectedOrder(null)}
         onOpenShipment={(shipment) => { setSelectedOrder(null); setActive("logistics"); setLogisticsTab("shipments"); setSelectedShipment(shipment); }}
+        onBookShipment={() => { setBookingOrder(selectedOrder); setSelectedOrder(null); }}
         notify={notify}
+      />}
+      {bookingOrder && <BookShipmentModal
+        order={bookingOrder}
+        onClose={() => setBookingOrder(null)}
+        onBook={(courier, weightKg, destination, postcode) => bookShipmentFor(bookingOrder, courier, weightKg, destination, postcode)}
       />}
       {selectedShipment && <ShipmentDrawer
         shipment={selectedShipment}
@@ -1358,6 +1476,206 @@ function ShipmentDrawer({ shipment, order, onClose, onOpenOrder, notify }: { shi
   </div>;
 }
 
+function NotificationPanel({ notifications, onSelect, onClose }: { notifications: AppNotification[]; onSelect: (n: AppNotification) => void; onClose: () => void }) {
+  const { t } = useLang();
+  return <>
+    <button className="dropdown-backdrop" aria-hidden onClick={onClose} tabIndex={-1} />
+    <div className="notification-panel" role="dialog" aria-label={t("Notifikasi")}>
+      <div className="notification-head"><strong>{t("Notifikasi")}</strong><span>{notifications.length}</span></div>
+      {notifications.length === 0
+        ? <p className="notification-empty">{t("Tiada notifikasi baharu")}</p>
+        : <ul>{notifications.map((n) => <li key={n.id}>
+            <button onClick={() => onSelect(n)}>
+              <i className={`notification-dot tone-${n.tone}`} />
+              <span><strong>{t(n.title)}</strong><small>{t(n.detail)}</small></span>
+              <ChevronRight size={15} />
+            </button>
+          </li>)}</ul>}
+    </div>
+  </>;
+}
+
+function BookShipmentModal({ order, onClose, onBook }: { order: Order; onClose: () => void; onBook: (courier: CourierName, weightKg: number, destination: string, postcode: string) => Promise<void> }) {
+  const { t } = useLang();
+  const [courier, setCourier] = useState<CourierName>("J&T Express");
+  const [weight, setWeight] = useState("0.6");
+  const [destination, setDestination] = useState("");
+  const [postcode, setPostcode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const weightKg = Number(weight);
+  const validWeight = Number.isFinite(weightKg) && weightKg > 0;
+  const validPostcode = /^\d{5}$/.test(postcode.trim());
+  const ready = validWeight && validPostcode && destination.trim().length > 0 && !busy;
+
+  const submit = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await onBook(courier, weightKg, destination.trim(), postcode.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <div className="modal-layer" role="dialog" aria-modal="true"><div className="modal">
+    <button className="modal-close" onClick={onClose}><X size={20} /></button>
+    <p className="eyebrow">{t("TEMPAH PENGHANTARAN")}</p>
+    <h2>{order.id}</h2>
+    <p>{t("Tempah AWB untuk")} {order.customer} · {order.item}</p>
+
+    <label className="settings-field"><small>{t("Kurier")}</small>
+      <div className="courier-picker">{(Object.keys(COURIER_TONES) as CourierName[]).map((name) => <button
+        key={name}
+        className={courier === name ? "active" : ""}
+        onClick={() => setCourier(name)}
+        aria-pressed={courier === name}
+      >
+        <span className="courier-thumb" style={{ background: COURIER_TONES[name].color }}>{COURIER_TONES[name].short}</span>
+        <span><strong>{name}</strong><small>{currency(quoteFor(name, validWeight ? weightKg : 0.6))}</small></span>
+      </button>)}</div>
+    </label>
+
+    <div className="booking-fields">
+      <label className="settings-field"><small>{t("Berat")} (kg)</small><input className="settings-input" value={weight} onChange={(e) => setWeight(e.target.value)} inputMode="decimal" /></label>
+      <label className="settings-field"><small>{t("Poskod")}</small><input className="settings-input" value={postcode} onChange={(e) => setPostcode(e.target.value)} inputMode="numeric" maxLength={5} placeholder="40150" /></label>
+    </div>
+    <label className="settings-field"><small>{t("Destinasi")}</small><input className="settings-input" value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Shah Alam, Selangor" /></label>
+
+    {postcode.length > 0 && !validPostcode && <p className="import-note">{t("Poskod mesti 5 digit")}</p>}
+    {error && <div className="import-summary has-error"><strong>{t("Tempahan gagal")}</strong><span>{error}</span></div>}
+
+    <div className="booking-quote"><span>{t("Anggaran kos")}</span><strong>{validWeight ? currency(quoteFor(courier, weightKg)) : "—"}</strong></div>
+
+    <div className="modal-actions">
+      <button className="secondary-button" onClick={onClose}>{t("Batal")}</button>
+      <button className="primary-button" disabled={!ready} onClick={submit}>{busy ? t("Menempah…") : t("Tempah penghantaran")}</button>
+    </div>
+  </div></div>;
+}
+
+const STOCK_LEVEL_CLASS = { out: "ship-failed", low: "ship-out", ok: "ship-delivered" } as const;
+const STOCK_LEVEL_LABEL = { out: "Habis", low: "Rendah", ok: "Mencukupi" } as const;
+
+function ProductsView({ products, saving, onSaveStock, notify }: { products: Product[]; saving: string | null; onSaveStock: (sku: string, stock: number, reorderLevel: number) => void; notify: (v: string) => void }) {
+  const { t } = useLang();
+  const { can, deniedReason } = useRole();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [stock, setStock] = useState("");
+  const [reorder, setReorder] = useState("");
+
+  const startEdit = (product: Product) => {
+    setEditing(product.sku);
+    setStock(String(product.stock));
+    setReorder(String(product.reorderLevel));
+  };
+
+  const commit = (sku: string) => {
+    const nextStock = Number(stock);
+    const nextReorder = Number(reorder);
+    if (!Number.isInteger(nextStock) || nextStock < 0 || !Number.isInteger(nextReorder) || nextReorder < 0) {
+      notify(t("Masukkan nombor bulat yang sah"));
+      return;
+    }
+    onSaveStock(sku, nextStock, nextReorder);
+    setEditing(null);
+  };
+
+  const lowCount = products.filter((p) => stockLevelOf(p) !== "ok").length;
+  const totalUnits = products.reduce((sum, p) => sum + p.stock, 0);
+  const stockValue = products.reduce((sum, p) => sum + p.stock * p.price, 0);
+  const soldThisWeek = products.reduce((sum, p) => sum + p.soldThisWeek, 0);
+
+  return <section className="view-stack">
+    <div className="metrics-grid">
+      <article className="metric metric-featured"><p>{t("Nilai stok")}</p><h2>{currency(stockValue)}</h2><small>{totalUnits} {t("unit dalam stok")}</small></article>
+      <article className="metric"><p>{t("SKU perlu perhatian")}</p><h2>{lowCount}</h2><small>{t("Habis atau bawah paras pesanan semula")}</small></article>
+      <article className="metric"><p>{t("Unit terjual")}</p><h2>{soldThisWeek}</h2><small>{t("Minggu ini")}</small></article>
+      <article className="metric"><p>{t("Jumlah SKU")}</p><h2>{products.length}</h2><small>Chef Ammar™ Arabic Spices</small></article>
+    </div>
+
+    <section className="panel orders-panel orders-expanded">
+      <div className="panel-heading orders-heading"><div><h3>{t("Inventori produk")}</h3><p>{t("Paras stok dan kadar jualan setiap SKU.")}</p></div><div className="table-actions">
+        <button className="export-button" onClick={() => {
+          downloadCsv(
+            `inventori-${new Date().toISOString().slice(0, 10)}.csv`,
+            ["SKU", "Produk", "Berat", "Harga (RM)", "Stok", "Paras pesanan semula", "Terjual minggu ini", "Status"],
+            products.map((p) => [p.sku, p.name, p.weightLabel, p.price.toFixed(2), p.stock, p.reorderLevel, p.soldThisWeek, STOCK_LEVEL_LABEL[stockLevelOf(p)]]),
+          );
+          notify(`${products.length} ${t("baris dieksport ke CSV")}`);
+        }}><Download size={14} /><span>{t("Export")}</span></button>
+      </div></div>
+      <div className="table-wrap"><table><thead><tr><th>{t("PRODUK")}</th><th>SKU</th><th>{t("HARGA")}</th><th>{t("STOK")}</th><th>{t("PARAS SEMULA")}</th><th>{t("TERJUAL")}</th><th>{t("LIPUTAN")}</th><th>{t("STATUS")}</th><th /></tr></thead><tbody>{products.map((product) => {
+        const level = stockLevelOf(product);
+        const cover = weeksOfCover(product);
+        const isEditing = editing === product.sku;
+        return <tr key={product.sku}>
+          <td><div className="product-cell"><span className="product-thumb" style={{ background: product.tone }}>{product.code}</span><span><strong>{product.name}</strong><small>{product.weightLabel}</small></span></div></td>
+          <td><small className="tracking-no">{product.sku}</small></td>
+          <td><strong>{currency(product.price)}</strong></td>
+          <td>{isEditing
+            ? <input className="stock-input" value={stock} onChange={(e) => setStock(e.target.value)} aria-label={t("STOK")} />
+            : <strong className="stock-count">{product.stock}</strong>}</td>
+          <td>{isEditing
+            ? <input className="stock-input" value={reorder} onChange={(e) => setReorder(e.target.value)} aria-label={t("PARAS SEMULA")} />
+            : <span className="muted-cell">{product.reorderLevel}</span>}</td>
+          <td><span className="muted-cell">{product.soldThisWeek}</span></td>
+          <td><span className="muted-cell">{cover === null ? "—" : `${cover} ${t("minggu")}`}</span></td>
+          <td><span className={`status status-${STOCK_LEVEL_CLASS[level]}`}><span />{t(STOCK_LEVEL_LABEL[level])}</span></td>
+          <td>{isEditing
+            ? <div className="stock-actions"><button className="secondary-button compact" onClick={() => setEditing(null)}>{t("Batal")}</button><button className="primary-button compact" disabled={saving === product.sku} onClick={() => commit(product.sku)}>{saving === product.sku ? t("Menyimpan…") : t("Simpan")}</button></div>
+            : <button className="row-menu" title={can("adjustStock") ? t("Laras stok") : deniedReason} disabled={!can("adjustStock")} aria-label={`${t("Laras stok")} ${product.name}`} onClick={() => startEdit(product)}><Pencil size={15} /></button>}</td>
+        </tr>;
+      })}</tbody></table></div>
+    </section>
+  </section>;
+}
+
+function CustomersView({ orders, onOpenOrder }: { orders: Order[]; onOpenOrder: (order: Order) => void }) {
+  const { t } = useLang();
+  const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const customers = useMemo(() => aggregateCustomers(orders), [orders]);
+  const summary = useMemo(() => summariseCustomers(customers), [customers]);
+  const filtered = useMemo(() => customers.filter((c) => `${c.name} ${c.topChannel}`.toLowerCase().includes(query.toLowerCase())), [customers, query]);
+
+  return <section className="view-stack">
+    <div className="metrics-grid">
+      <article className="metric metric-featured"><p>{t("Jumlah pelanggan")}</p><h2>{summary.total}</h2><small>{t("Daripada pesanan yang direkod")}</small></article>
+      <article className="metric"><p>{t("Pelanggan berulang")}</p><h2>{summary.repeat}</h2><small>{summary.repeatRate}% {t("kadar pembelian berulang")}</small></article>
+      <article className="metric"><p>{t("Purata nilai sepanjang hayat")}</p><h2>{currency(summary.averageLifetimeValue)}</h2><small>{t("Setiap pelanggan")}</small></article>
+      <article className="metric"><p>{t("Pelanggan teratas")}</p><h2 className="metric-name">{customers[0]?.name ?? "—"}</h2><small>{customers[0] ? currency(customers[0].lifetimeValue) : ""}</small></article>
+    </div>
+
+    <section className="panel orders-panel orders-expanded">
+      <div className="panel-heading orders-heading"><div><h3>{t("Pelanggan")}</h3><p>{filtered.length} {t("pelanggan ditemui")}</p></div><div className="table-actions">
+        <label className="search-box"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("Cari...")} /></label>
+      </div></div>
+      <div className="table-wrap"><table><thead><tr><th>{t("PELANGGAN")}</th><th>{t("PESANAN")}</th><th>{t("NILAI SEPANJANG HAYAT")}</th><th>{t("PURATA")}</th><th>{t("SALURAN UTAMA")}</th><th>{t("PESANAN TERAKHIR")}</th><th /></tr></thead><tbody>{filtered.map((customer) => <Fragment key={customer.name}>
+        <tr tabIndex={0} onClick={() => setExpanded(expanded === customer.name ? null : customer.name)} onKeyDown={(e) => { if (e.key === "Enter") setExpanded(expanded === customer.name ? null : customer.name); }}>
+          <td><div className="customer"><span>{customer.initials}</span><strong>{customer.name}</strong></div></td>
+          <td><strong>{customer.orderCount}</strong>{customer.refunds > 0 && <small>{customer.refunds} refund</small>}</td>
+          <td><strong>{currency(customer.lifetimeValue)}</strong></td>
+          <td><span className="muted-cell">{currency(customer.averageOrder)}</span></td>
+          <td><span className={`channel-tag ${customer.topChannel.split(".")[0].toLowerCase().replace(" shop", "")}`}>{customer.topChannel}</span></td>
+          <td><strong>{customer.lastOrderId}</strong><small>{customer.lastOrderTime}</small></td>
+          <td><button className="row-menu" aria-label={`${t("Buka")} ${customer.name}`} aria-expanded={expanded === customer.name} onClick={(e) => { e.stopPropagation(); setExpanded(expanded === customer.name ? null : customer.name); }}><ChevronDown size={16} style={{ transform: expanded === customer.name ? "rotate(180deg)" : undefined, transition: "transform 150ms" }} /></button></td>
+        </tr>
+        {expanded === customer.name && <tr className="customer-orders-row"><td colSpan={7}><div className="customer-orders">{customer.orders.map((order) => <button className="customer-order" key={order.id} onClick={() => onOpenOrder(order)}>
+          <span className="product-thumb" style={{ background: order.productTone }}>{order.productCode}</span>
+          <span className="customer-order-main"><strong>{order.id}</strong><small>{order.item} · {order.time}</small></span>
+          <StatusBadge status={order.status} />
+          <b>{currency(order.amount)}</b>
+        </button>)}</div></td></tr>}
+      </Fragment>)}</tbody></table>{filtered.length === 0 && <div className="empty-state"><Search size={28} /><strong>{t("Tiada pelanggan")}</strong><span>{t("Ubah carian anda.")}</span></div>}</div>
+    </section>
+  </section>;
+}
+
 function SettingsView({ notify, sourceStatus, paymentSettings, onSavePaymentSettings }: { notify: (v: string) => void; sourceStatus: Record<DataSourceKey, SourceStatus> | null; paymentSettings: PaymentSettings; onSavePaymentSettings: (next: PaymentSettings) => void }) {
   const { t } = useLang();
   const [bankName, setBankName] = useState(paymentSettings.bankName);
@@ -1445,7 +1763,7 @@ function ImportModal({ existingIds, onClose, onImport }: { existingIds: string[]
   </div></div>;
 }
 
-function OrderDrawer({ order, shipment, onClose, onOpenShipment, notify }: { order: Order; shipment: Shipment | null; onClose: () => void; onOpenShipment: (shipment: Shipment) => void; notify: (message: string) => void }) {
+function OrderDrawer({ order, shipment, onClose, onOpenShipment, onBookShipment, notify }: { order: Order; shipment: Shipment | null; onClose: () => void; onOpenShipment: (shipment: Shipment) => void; onBookShipment: () => void; notify: (message: string) => void }) {
   const { t } = useLang();
   return <div className="modal-layer drawer-layer" role="dialog" aria-modal="true" aria-label={`${t("Butiran pesanan")} ${order.id}`}>
     <aside className="drawer">
@@ -1464,7 +1782,10 @@ function OrderDrawer({ order, shipment, onClose, onOpenShipment, notify }: { ord
           <span className="linked-card-end"><ShipmentStatusBadge status={shipment.status} /><ChevronRight size={16} /></span>
         </button>
       ) : (
-        <p className="drawer-empty">{t("Belum ada penghantaran untuk pesanan ini.")}</p>
+        <div className="drawer-empty">
+          <p>{t("Belum ada penghantaran untuk pesanan ini.")}</p>
+          <GatedButton permission="bookShipment" className="secondary-button" onClick={onBookShipment}>{t("Tempah penghantaran")}</GatedButton>
+        </div>
       )}</section>
 
       <div className="drawer-total"><span>{t("Jumlah dibayar")}</span><strong>{currency(order.amount)}</strong></div>
