@@ -23,6 +23,8 @@ export type ContentPiece = {
   /** Google Drive link to the asset or working folder. */
   driveUrl: string | null;
   notes: string;
+  /** The shoot that produces this piece, if one is booked yet. */
+  shootId: string | null;
   updatedAt: string;
 };
 

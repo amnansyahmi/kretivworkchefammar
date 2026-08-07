@@ -39,6 +39,7 @@ export async function POST(request: Request) {
     productSku: body.productSku ?? null,
     driveUrl: body.driveUrl ?? null,
     notes: String(body.notes ?? ""),
+    shootId: body.shootId ?? null,
     updatedAt: new Date().toISOString().slice(0, 10),
   });
   return NextResponse.json({ persisted });

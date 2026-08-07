@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { contentPieces, contentSettings } from "../db/schema";
+import { contentPieces, contentSettings, contentShoots } from "../db/schema";
 import { mockContent } from "./mock-content";
+import { mockShoots } from "./mock-shoots";
 import type { ContentPiece } from "./types";
+import type { ContentShoot } from "./shoots";
 
 const KEY = "current";
 
@@ -18,8 +20,53 @@ function toPiece(row: typeof contentPieces.$inferSelect): ContentPiece {
     productSku: row.productSku,
     driveUrl: row.driveUrl,
     notes: row.notes,
+    shootId: row.shootId,
     updatedAt: row.updatedAt.toISOString().slice(0, 10),
   };
+}
+
+function toShoot(row: typeof contentShoots.$inferSelect): ContentShoot {
+  return {
+    id: row.id,
+    title: row.title,
+    date: row.date,
+    location: row.location as ContentShoot["location"],
+    status: row.status as ContentShoot["status"],
+    crew: row.crew,
+    callTime: row.callTime,
+    driveUrl: row.driveUrl,
+    notes: row.notes,
+  };
+}
+
+export async function getShoots(): Promise<ContentShoot[]> {
+  const db = getDb();
+  if (!db) return mockShoots;
+
+  const rows = await db.select().from(contentShoots);
+  if (!rows.length) {
+    await db.insert(contentShoots).values(mockShoots.map((shoot) => ({ ...shoot, updatedAt: new Date() })));
+    return mockShoots;
+  }
+  return rows.map(toShoot).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export async function saveShoot(shoot: ContentShoot): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  const values = { ...shoot, updatedAt: new Date() };
+  await db.insert(contentShoots).values(values).onConflictDoUpdate({ target: contentShoots.id, set: values });
+  return true;
+}
+
+export async function deleteShoot(id: string): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  // Detach the pieces rather than deleting them — the content is still
+  // planned, it just needs rebooking.
+  await db.update(contentPieces).set({ shootId: null }).where(eq(contentPieces.shootId, id));
+  await db.delete(contentShoots).where(eq(contentShoots.id, id));
+  return true;
 }
 
 export async function getContent(): Promise<{ pieces: ContentPiece[]; persisted: boolean }> {
@@ -51,6 +98,7 @@ export async function saveContentPiece(piece: ContentPiece): Promise<boolean> {
     productSku: piece.productSku,
     driveUrl: piece.driveUrl,
     notes: piece.notes,
+    shootId: piece.shootId,
     updatedAt: new Date(),
   };
   await db.insert(contentPieces).values(values).onConflictDoUpdate({ target: contentPieces.id, set: values });

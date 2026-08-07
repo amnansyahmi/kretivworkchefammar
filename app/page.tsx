@@ -20,6 +20,7 @@ import {
   ShoppingBag,
   Store,
   Truck,
+  Video,
   WalletCards,
   X,
 } from "lucide-react";
@@ -47,6 +48,9 @@ import type { CourierName } from "../lib/logistics/types";
 import { mockContent } from "../lib/content/mock-content";
 import { CONTENT_STAGES, CONTENT_FORMATS, CONTENT_CHANNELS, daysUntil, isOverdue, isDueSoon, type ContentPiece, type ContentStatus } from "../lib/content/types";
 import { parseDriveUrl } from "../lib/content/drive";
+import { mockShoots } from "../lib/content/mock-shoots";
+import { SHOOT_LOCATIONS, SHOOT_STATUSES, shootStatusTone, type ContentShoot } from "../lib/content/shoots";
+import { buildMonthGrid, shiftMonth, monthLabelBM, groupByDate, toIsoDate, WEEKDAY_LABELS_BM } from "../lib/content/calendar";
 
 type Lang = "bm" | "en";
 
@@ -223,6 +227,33 @@ const EN: Record<string, string> = {
   "Belum ada folder Drive": "No Drive folder yet",
   "Tampal pautan folder di atas untuk lihat fail di sini.": "Paste a folder link above to see files here.",
   "Kalau paparan kosong atau minta log masuk, folder itu belum dikongsi secara umum.": "If this is blank or asks you to sign in, the folder isn't shared publicly yet.",
+
+  // Content calendar & shoots
+  "Kalendar": "Calendar", "Kalendar kandungan": "Content calendar",
+  "Hari penggambaran": "Shoot days",
+  "Kandungan terbit": "Content going live", "Dijadualkan bulan ini": "Scheduled this month",
+  "Belum disahkan": "Not confirmed", "Shoot masih dirancang": "Shoots still tentative",
+  "Selesai dirakam": "Filmed", "Bulan sebelumnya": "Previous month", "Bulan seterusnya": "Next month",
+  "Penggambaran": "Shoot", "Shoot baharu": "New shoot",
+  "Klik dua kali pada mana-mana hari untuk tambah penggambaran.": "Double-click any day to add a shoot.",
+  "BUTIRAN PENGGAMBARAN": "SHOOT DETAILS", "PENGGAMBARAN BAHARU": "NEW SHOOT",
+  "Butiran penggambaran": "Shoot details", "Tajuk penggambaran": "Shoot title",
+  "Contoh: Batch raya — 4 video pendek": "e.g. Raya batch — 4 short videos",
+  "Tarikh shoot": "Shoot date", "Masa panggilan": "Call time", "Lokasi": "Location", "Kru": "Crew",
+  "Contoh: Chef Ammar, Amnan, 1 videografer": "e.g. Chef Ammar, Amnan, 1 videographer",
+  "Folder footage mentah": "Raw footage folder",
+  "Studio KretivWork": "KretivWork Studio", "Dapur Chef Ammar": "Chef Ammar's Kitchen",
+  "Lokasi luar": "On location", "Rumah pelanggan": "Customer's home",
+  "Dirancang": "Tentative", "Disahkan": "Confirmed", "Dibatalkan": "Cancelled",
+  "Kandungan dari shoot ini": "Content from this shoot",
+  "Belum ada kandungan diikat pada shoot ini.": "No content linked to this shoot yet.",
+  "terbit": "live", "Belum dijadualkan": "Not scheduled yet",
+  "Penggambaran disimpan": "Shoot saved",
+  "Penggambaran dikemas kini (tidak kekal tanpa pangkalan data)": "Shoot updated (not persisted without a database)",
+  "Gagal menyimpan penggambaran": "Failed to save shoot", "Penggambaran dipadam": "Shoot deleted",
+  "Januari": "January", "Februari": "February", "Mac": "March", "April": "April", "Mei": "May", "Jun": "June",
+  "Julai": "July", "Ogos": "August", "September": "September", "Oktober": "October",
+  "November": "November", "Disember": "December",
 
   // Shipment booking
   "TEMPAH PENGHANTARAN": "BOOK SHIPMENT", "Tempah penghantaran": "Book shipment", "Tempah AWB untuk": "Book an AWB for",
@@ -556,6 +587,8 @@ export default function Home() {
   const [contentTab, setContentTab] = useState("board");
   const [driveFolderUrl, setDriveFolderUrl] = useState<string | null>(null);
   const [openContent, setOpenContent] = useState<{ piece: ContentPiece; isNew: boolean } | null>(null);
+  const [shoots, setShoots] = useState<ContentShoot[]>(mockShoots);
+  const [openShoot, setOpenShoot] = useState<{ shoot: ContentShoot; isNew: boolean } | null>(null);
   const [savingSku, setSavingSku] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const [bookingOrder, setBookingOrder] = useState<Order | null>(null);
@@ -569,11 +602,13 @@ export default function Home() {
     Promise.all([
       fetch("/api/content").then((res) => res.json()),
       fetch("/api/content-settings").then((res) => res.json()),
+      fetch("/api/content/shoots").then((res) => res.json()),
     ])
-      .then(([content, settings]: [{ pieces: ContentPiece[] }, { driveFolderUrl: string | null }]) => {
+      .then(([content, settings, shootData]: [{ pieces: ContentPiece[] }, { driveFolderUrl: string | null }, { shoots: ContentShoot[] }]) => {
         if (cancelled) return;
         setContentPieces(content.pieces);
         setDriveFolderUrl(settings.driveFolderUrl);
+        setShoots(shootData.shoots);
       })
       .catch((err) => console.error("Failed to load content", err));
     return () => { cancelled = true; };
@@ -655,6 +690,40 @@ export default function Home() {
     fetch(`/api/content?id=${encodeURIComponent(id)}`, { method: "DELETE" })
       .catch((err) => console.error("Failed to delete content", err));
     notify(t("Kandungan dipadam"));
+  };
+
+  const saveShoot = (shoot: ContentShoot) => {
+    setShoots((current) => {
+      const exists = current.some((s) => s.id === shoot.id);
+      const next = exists ? current.map((s) => (s.id === shoot.id ? shoot : s)) : [...current, shoot];
+      return [...next].sort((a, b) => a.date.localeCompare(b.date));
+    });
+    setOpenShoot(null);
+    fetch("/api/content/shoots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(shoot) })
+      .then((res) => res.json())
+      .then((data: { persisted?: boolean; error?: string }) => {
+        if (data.error) notify(data.error);
+        else notify(t(data.persisted ? "Penggambaran disimpan" : "Penggambaran dikemas kini (tidak kekal tanpa pangkalan data)"));
+      })
+      .catch((err) => { console.error("Failed to save shoot", err); notify(t("Gagal menyimpan penggambaran")); });
+  };
+
+  const deleteShoot = (id: string) => {
+    setShoots((current) => current.filter((s) => s.id !== id));
+    // Mirror the server: detach rather than delete the pieces.
+    setContentPieces((current) => current.map((p) => (p.shootId === id ? { ...p, shootId: null } : p)));
+    setOpenShoot(null);
+    fetch(`/api/content/shoots?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+      .catch((err) => console.error("Failed to delete shoot", err));
+    notify(t("Penggambaran dipadam"));
+  };
+
+  const nextShootId = () => {
+    const highest = shoots.reduce((max, s) => {
+      const n = Number(s.id.match(/(\d+)$/)?.[1] ?? 0);
+      return n > max ? n : max;
+    }, 0);
+    return `SH-${String(highest + 1).padStart(2, "0")}`;
   };
 
   const saveDriveFolder = (url: string | null) => {
@@ -990,7 +1059,7 @@ export default function Home() {
             {salesTab === "sources" && <AttributionView onOpenOrders={openOrdersFor} />}
           </>}
           {active === "content" && <>
-            <SectionTabs value={contentTab} onChange={setContentTab} tabs={[{ id: "board", label: "Papan" }, { id: "library", label: "Pustaka" }]} />
+            <SectionTabs value={contentTab} onChange={setContentTab} tabs={[{ id: "board", label: "Papan" }, { id: "calendar", label: "Kalendar" }, { id: "library", label: "Pustaka" }]} />
             {contentTab === "board" && <ContentBoard
               pieces={contentPieces}
               products={products}
@@ -1008,8 +1077,19 @@ export default function Home() {
                   productSku: null,
                   driveUrl: null,
                   notes: "",
+                  shootId: null,
                   updatedAt: new Date().toISOString().slice(0, 10),
                 },
+              })}
+            />}
+            {contentTab === "calendar" && <ContentCalendar
+              pieces={contentPieces}
+              shoots={shoots}
+              onSelectPiece={(piece) => setOpenContent({ piece, isNew: false })}
+              onSelectShoot={(shoot) => setOpenShoot({ shoot, isNew: false })}
+              onCreateShoot={(date) => setOpenShoot({
+                isNew: true,
+                shoot: { id: nextShootId(), title: "", date, location: "Dapur Chef Ammar", status: "Dirancang", crew: "", callTime: "", driveUrl: null, notes: "" },
               })}
             />}
             {contentTab === "library" && <ContentLibrary driveFolderUrl={driveFolderUrl} onSaveFolder={saveDriveFolder} notify={notify} />}
@@ -1054,10 +1134,20 @@ export default function Home() {
       {openContent && <ContentDrawer
         piece={openContent.piece}
         products={products}
+        shoots={shoots}
         isNew={openContent.isNew}
         onClose={() => setOpenContent(null)}
         onSave={saveContent}
         onDelete={deleteContent}
+      />}
+      {openShoot && <ShootDrawer
+        shoot={openShoot.shoot}
+        pieces={contentPieces}
+        isNew={openShoot.isNew}
+        onClose={() => setOpenShoot(null)}
+        onSave={saveShoot}
+        onDelete={deleteShoot}
+        onSelectPiece={(piece) => { setOpenShoot(null); setOpenContent({ piece, isNew: false }); }}
       />}
       {bookingOrder && <BookShipmentModal
         order={bookingOrder}
@@ -1757,6 +1847,140 @@ function ContentBoard({ pieces, products, onSelect, onCreate }: { pieces: Conten
   </section>;
 }
 
+function ContentCalendar({ pieces, shoots, onSelectPiece, onSelectShoot, onCreateShoot }: { pieces: ContentPiece[]; shoots: ContentShoot[]; onSelectPiece: (p: ContentPiece) => void; onSelectShoot: (s: ContentShoot) => void; onCreateShoot: (date: string) => void }) {
+  const { t } = useLang();
+  const { can } = useRole();
+  const today = new Date();
+  const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
+
+  const grid = useMemo(() => buildMonthGrid(cursor.year, cursor.month), [cursor]);
+  const shootsByDate = useMemo(() => groupByDate(shoots, (s) => s.date), [shoots]);
+  const piecesByDate = useMemo(() => groupByDate(pieces, (p) => p.scheduledFor), [pieces]);
+
+  const monthShoots = shoots.filter((s) => s.date.startsWith(`${cursor.year}-${String(cursor.month + 1).padStart(2, "0")}`));
+  const monthPieces = pieces.filter((p) => p.scheduledFor.startsWith(`${cursor.year}-${String(cursor.month + 1).padStart(2, "0")}`));
+
+  return <section className="view-stack">
+    <div className="metrics-grid">
+      <article className="metric metric-featured"><p>{t("Hari penggambaran")}</p><h2>{monthShoots.length}</h2><small>{t("Bulan ini")}</small></article>
+      <article className="metric"><p>{t("Kandungan terbit")}</p><h2>{monthPieces.length}</h2><small>{t("Dijadualkan bulan ini")}</small></article>
+      <article className="metric"><p>{t("Belum disahkan")}</p><h2>{monthShoots.filter((s) => s.status === "Dirancang").length}</h2><small>{t("Shoot masih dirancang")}</small></article>
+      <article className="metric"><p>{t("Selesai dirakam")}</p><h2>{monthShoots.filter((s) => s.status === "Selesai").length}</h2><small>{t("Bulan ini")}</small></article>
+    </div>
+
+    <section className="panel">
+      <div className="panel-heading orders-heading">
+        <div className="calendar-nav">
+          <button className="cal-arrow" onClick={() => setCursor((c) => shiftMonth(c.year, c.month, -1))} aria-label={t("Bulan sebelumnya")}><ChevronLeft size={16} /></button>
+          <strong>{t(monthLabelBM(cursor.year, cursor.month).split(" ")[0])} {cursor.year}</strong>
+          <button className="cal-arrow" onClick={() => setCursor((c) => shiftMonth(c.year, c.month, 1))} aria-label={t("Bulan seterusnya")}><ChevronRight size={16} /></button>
+          <button className="cal-today" onClick={() => setCursor({ year: today.getFullYear(), month: today.getMonth() })}>{t("Hari ini")}</button>
+        </div>
+        <div className="table-actions">
+          <span className="cal-legend"><i className="legend-shoot" />{t("Penggambaran")}</span>
+          <span className="cal-legend"><i className="legend-live" />{t("Tarikh terbit")}</span>
+          <GatedButton permission="editContent" className="primary-button" onClick={() => onCreateShoot(toIsoDate(today))}>{t("Shoot baharu")}</GatedButton>
+        </div>
+      </div>
+
+      <div className="calendar-scroll"><div className="calendar-grid" role="grid" aria-label={t("Kalendar kandungan")}>
+        {WEEKDAY_LABELS_BM.map((day) => <div className="cal-weekday" key={day}>{t(day)}</div>)}
+        {grid.map((day) => {
+          const dayShoots = shootsByDate.get(day.date) ?? [];
+          const dayPieces = piecesByDate.get(day.date) ?? [];
+          return <div
+            className={`cal-cell ${day.inMonth ? "" : "is-outside"} ${day.isToday ? "is-today" : ""} ${day.isWeekend ? "is-weekend" : ""}`}
+            key={day.date}
+            role="gridcell"
+            onDoubleClick={() => can("editContent") && day.inMonth && onCreateShoot(day.date)}
+          >
+            <span className="cal-daynum">{day.dayOfMonth}</span>
+            <div className="cal-events">
+              {dayShoots.map((shoot) => <button className={`cal-event is-shoot tone-${shootStatusTone(shoot.status)}`} key={shoot.id} onClick={() => onSelectShoot(shoot)} title={`${shoot.title} · ${shoot.location}`}>
+                <Video size={10} /><span>{shoot.title}</span>
+              </button>)}
+              {dayPieces.map((piece) => <button className="cal-event is-live" key={piece.id} onClick={() => onSelectPiece(piece)} title={`${piece.title} · ${piece.channel}`}>
+                <i style={{ background: CONTENT_CHANNEL_TONES[piece.channel] ?? "#64748b" }} /><span>{piece.title}</span>
+              </button>)}
+            </div>
+          </div>;
+        })}
+      </div></div>
+      <p className="cal-hint">{t("Klik dua kali pada mana-mana hari untuk tambah penggambaran.")}</p>
+    </section>
+  </section>;
+}
+
+function ShootDrawer({ shoot, pieces, isNew, onClose, onSave, onDelete, onSelectPiece }: { shoot: ContentShoot; pieces: ContentPiece[]; isNew: boolean; onClose: () => void; onSave: (s: ContentShoot) => void; onDelete: (id: string) => void; onSelectPiece: (p: ContentPiece) => void }) {
+  const { t } = useLang();
+  const { can, deniedReason } = useRole();
+  const [draft, setDraft] = useState<ContentShoot>(shoot);
+  const editable = can("editContent");
+  const set = <K extends keyof ContentShoot>(key: K, value: ContentShoot[K]) => setDraft((d) => ({ ...d, [key]: value }));
+
+  const linked = pieces.filter((p) => p.shootId === draft.id);
+  const drive = draft.driveUrl ? parseDriveUrl(draft.driveUrl) : null;
+  const driveInvalid = (draft.driveUrl ?? "").trim().length > 0 && (drive === null || drive.kind === "unknown");
+  const valid = draft.title.trim().length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(draft.date) && !driveInvalid;
+
+  return <div className="modal-layer drawer-layer" role="dialog" aria-modal="true" aria-label={t("Butiran penggambaran")}>
+    <aside className="drawer">
+      <div className="drawer-header"><div><p className="eyebrow">{isNew ? t("PENGGAMBARAN BAHARU") : t("BUTIRAN PENGGAMBARAN")}</p><h2>{draft.id}</h2></div><button className="modal-close" onClick={onClose}><X size={20} /></button></div>
+
+      <label className="settings-field"><small>{t("Tajuk penggambaran")}</small>
+        <input className="settings-input" value={draft.title} onChange={(e) => set("title", e.target.value)} disabled={!editable} placeholder={t("Contoh: Batch raya — 4 video pendek")} />
+      </label>
+
+      <div className="booking-fields">
+        <label className="settings-field"><small>{t("Tarikh shoot")}</small>
+          <input className="settings-input" type="date" value={draft.date} onChange={(e) => set("date", e.target.value)} disabled={!editable} />
+        </label>
+        <label className="settings-field"><small>{t("Masa panggilan")}</small>
+          <input className="settings-input" value={draft.callTime} onChange={(e) => set("callTime", e.target.value)} disabled={!editable} placeholder="9:00 AM" />
+        </label>
+      </div>
+
+      <div className="booking-fields">
+        <label className="settings-field"><small>{t("Lokasi")}</small>
+          <select className="settings-input" value={draft.location} onChange={(e) => set("location", e.target.value as ContentShoot["location"])} disabled={!editable}>{SHOOT_LOCATIONS.map((l) => <option key={l} value={l}>{t(l)}</option>)}</select>
+        </label>
+        <label className="settings-field"><small>{t("Status")}</small>
+          <select className="settings-input" value={draft.status} onChange={(e) => set("status", e.target.value as ContentShoot["status"])} disabled={!editable}>{SHOOT_STATUSES.map((s) => <option key={s} value={s}>{t(s)}</option>)}</select>
+        </label>
+      </div>
+
+      <label className="settings-field"><small>{t("Kru")}</small>
+        <input className="settings-input" value={draft.crew} onChange={(e) => set("crew", e.target.value)} disabled={!editable} placeholder={t("Contoh: Chef Ammar, Amnan, 1 videografer")} />
+      </label>
+
+      <label className="settings-field"><small>{t("Folder footage mentah")}</small>
+        <input className="settings-input" value={draft.driveUrl ?? ""} onChange={(e) => set("driveUrl", e.target.value || null)} disabled={!editable} placeholder="https://drive.google.com/drive/folders/..." />
+      </label>
+      {driveInvalid && <p className="import-note">{t("Pautan Google Drive tidak sah")}</p>}
+      {drive?.embedUrl && <div className="drive-preview"><iframe src={drive.embedUrl} title={draft.title} loading="lazy" /></div>}
+
+      <label className="settings-field"><small>{t("Nota")}</small>
+        <textarea className="settings-input content-notes" value={draft.notes} onChange={(e) => set("notes", e.target.value)} disabled={!editable} rows={3} />
+      </label>
+
+      <section className="drawer-section"><h3>{t("Kandungan dari shoot ini")} ({linked.length})</h3>
+        {linked.length === 0
+          ? <p className="drawer-empty"><span>{t("Belum ada kandungan diikat pada shoot ini.")}</span></p>
+          : <div className="customer-orders">{linked.map((piece) => <button className="customer-order" key={piece.id} onClick={() => onSelectPiece(piece)}>
+              <i className="content-channel-dot" style={{ background: CONTENT_CHANNEL_TONES[piece.channel] ?? "#64748b" }} />
+              <span className="customer-order-main"><strong>{piece.title}</strong><small>{piece.channel} · {t("terbit")} {piece.scheduledFor}</small></span>
+              <span className={`status status-${CONTENT_STATUS_CLASS[piece.status]}`}><span />{t(piece.status)}</span>
+            </button>)}</div>}
+      </section>
+
+      <div className="drawer-actions">
+        {!isNew && <button className="secondary-button" disabled={!editable} title={editable ? undefined : deniedReason} onClick={() => onDelete(draft.id)}>{t("Padam")}</button>}
+        <button className="primary-button" disabled={!valid || !editable} title={editable ? undefined : deniedReason} onClick={() => onSave(draft)}>{t("Simpan")}</button>
+      </div>
+    </aside>
+  </div>;
+}
+
 function ContentLibrary({ driveFolderUrl, onSaveFolder, notify }: { driveFolderUrl: string | null; onSaveFolder: (url: string | null) => void; notify: (v: string) => void }) {
   const { t } = useLang();
   const { can, deniedReason } = useRole();
@@ -1792,7 +2016,7 @@ function ContentLibrary({ driveFolderUrl, onSaveFolder, notify }: { driveFolderU
   </section>;
 }
 
-function ContentDrawer({ piece, products, isNew, onClose, onSave, onDelete }: { piece: ContentPiece; products: Product[]; isNew: boolean; onClose: () => void; onSave: (p: ContentPiece) => void; onDelete: (id: string) => void }) {
+function ContentDrawer({ piece, products, shoots, isNew, onClose, onSave, onDelete }: { piece: ContentPiece; products: Product[]; shoots: ContentShoot[]; isNew: boolean; onClose: () => void; onSave: (p: ContentPiece) => void; onDelete: (id: string) => void }) {
   const { t } = useLang();
   const { can, deniedReason } = useRole();
   const [draft, setDraft] = useState<ContentPiece>(piece);
@@ -1840,6 +2064,13 @@ function ContentDrawer({ piece, products, isNew, onClose, onSave, onDelete }: { 
         <span className="product-thumb" style={{ background: product.tone }}>{product.code}</span>
         <span><strong>{product.name}</strong><small>{t("Stok")}: {product.stock} · {t("Terjual minggu ini")}: {product.soldThisWeek}</small></span>
       </div>}
+
+      <label className="settings-field"><small>{t("Penggambaran")}</small>
+        <select className="settings-input" value={draft.shootId ?? ""} onChange={(e) => set("shootId", e.target.value || null)} disabled={!editable}>
+          <option value="">{t("Belum dijadualkan")}</option>
+          {shoots.map((s) => <option key={s.id} value={s.id}>{s.date} · {s.title}</option>)}
+        </select>
+      </label>
 
       <label className="settings-field"><small>{t("Pautan Google Drive")}</small>
         <input className="settings-input" value={draft.driveUrl ?? ""} onChange={(e) => set("driveUrl", e.target.value || null)} disabled={!editable} placeholder="https://drive.google.com/file/d/..." />

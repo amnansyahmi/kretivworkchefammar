@@ -49,6 +49,25 @@ export const contentPieces = pgTable("content_pieces", {
   productSku: text("product_sku"),
   driveUrl: text("drive_url"),
   notes: text("notes").notNull().default(""),
+  // Which shoot produces this piece. Deliberately not a foreign key: a piece
+  // can be planned before its shoot is booked, and deleting a shoot should
+  // orphan its pieces rather than delete them.
+  shootId: text("shoot_id"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Production sessions. Separate from content_pieces because one shoot day
+// normally produces several pieces that go live on different dates.
+export const contentShoots = pgTable("content_shoots", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  date: text("date").notNull(),
+  location: text("location").notNull(),
+  status: text("status").notNull(),
+  crew: text("crew").notNull().default(""),
+  callTime: text("call_time").notNull().default(""),
+  driveUrl: text("drive_url"),
+  notes: text("notes").notNull().default(""),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

@@ -24,6 +24,7 @@ export const mockContent: ContentPiece[] = [
     driveUrl: null,
     notes: "Hook: 'Nasi Mandi tanpa oven'. Guna rempah Mandi 140g.",
     updatedAt: dateOffset(0),
+    shootId: "SH-07",
   },
   {
     id: "CT-022",
@@ -37,6 +38,7 @@ export const mockContent: ContentPiece[] = [
     driveUrl: null,
     notes: "5 slide. Slide terakhir CTA ke BCL.my.",
     updatedAt: dateOffset(0),
+    shootId: "SH-09",
   },
   {
     id: "CT-023",
@@ -50,6 +52,7 @@ export const mockContent: ContentPiece[] = [
     driveUrl: null,
     notes: "Rundown 45 minit. Perlu kelulusan Chef untuk skrip.",
     updatedAt: dateOffset(0),
+    shootId: "SH-10",
   },
   {
     id: "CT-024",
@@ -63,6 +66,7 @@ export const mockContent: ContentPiece[] = [
     driveUrl: null,
     notes: "Studio shot, latar kayu. 8 angle.",
     updatedAt: dateOffset(0),
+    shootId: "SH-09",
   },
   {
     id: "CT-025",
@@ -76,6 +80,7 @@ export const mockContent: ContentPiece[] = [
     driveUrl: null,
     notes: "Kumpul 3 testimoni dari WhatsApp.",
     updatedAt: dateOffset(0),
+    shootId: "SH-11",
   },
   {
     id: "CT-026",
@@ -89,5 +94,6 @@ export const mockContent: ContentPiece[] = [
     driveUrl: null,
     notes: "Konten edukasi, bukan hard sell.",
     updatedAt: dateOffset(0),
+    shootId: null,
   },
 ];
